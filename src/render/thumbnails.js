@@ -42,7 +42,7 @@ export function renderBirdThumbnails() {
     box.setFromObject(bird.group);
     box.getSize(size); box.getCenter(center);
     // Lùi máy ảnh cho chim vừa khung, chừa lề
-    const fit = Math.max(size.y / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), size.x / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect)) * 0.56;
+    const fit = Math.max(size.y / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), size.x / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect)) * 0.47;
     camera.position.set(center.x + fit * 0.18, center.y + fit * 0.22, center.z + fit);
     camera.lookAt(center.x, center.y + size.y * 0.03, center.z);
     renderer.render(scene, camera);

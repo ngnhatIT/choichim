@@ -216,6 +216,21 @@ export function featherTexture() {
   });
 }
 
+/**
+ * Mật độ lông tơ cho các lớp vỏ (shell): mỗi texel một giá trị ngẫu nhiên, lọc tuyến tính thành
+ * các chóp nhọn; lớp càng ngoài chỉ giữ chỗ có giá trị cao nên sợi lông thon dần về ngọn.
+ */
+export function fuzzTexture() {
+  return plainTexture('fuzz', 48, 48, (g, w, h) => {
+    const img = g.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) {
+      const v = Math.random() ** 0.8 * 255;
+      img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+  }, false);
+}
+
 /** Lớp lông vảy cá phủ thân (màu) và bản đồ pháp tuyến tương ứng. */
 export function contourTextures() {
   if (cache.has('contour')) return cache.get('contour');

@@ -27,10 +27,11 @@ Mở trang với `#debug` (ví dụ `http://localhost:5173/#debug`) để truy c
 - Chim mới về cần yên tĩnh 3 ngày; mùa thay lông từ ngày 6 đến ngày 10; đổi thức ăn có thể trộn dần.
 - Chấm điểm an toàn cho người nuôi (phòng bệnh sốt vẹt khi dọn lồng).
 - Tiếng hót tổng hợp bằng Web Audio, không dùng file ghi âm: mỗi loài một "ngữ pháp" tiếng hót riêng theo cách hót thật, mỗi con một giọng hơi khác, hay hơn khi lên cấp; có tiếng gọi khi đói, hoảng, ốm; loài nói đọc câu đã học (giọng đọc tiếng Việt của máy nếu có); âm thanh mưa, gió, ve sầu, dế; tiếng thao tác. Nghe thử từng loài ở màn hình chọn chim và Sổ tay.
-- Cảnh 3D thủ tục, không dùng file model ngoài: chim có hoạt ảnh nhảy cầu, hót, ngủ, xù lông, rũ nước; mặt trời chạy theo giờ, bóng đổ, mưa, đèn ban đêm.
+- Cảnh 3D thủ tục, không dùng file model ngoài: chim có lông tơ nhiều lớp (shell) mềm như lông thật, viền sáng ở mép dáng, mắt to long lanh hai đốm sáng, mỏ trơn, đuôi có khối; hoạt ảnh nhảy cầu, hót, ngủ, xù lông, rũ nước; mặt trời chạy theo giờ, bóng đổ, mưa, đèn ban đêm.
+- Bong bóng nhu cầu nổi trên đầu chim (máng sắp hết, nước bẩn, lồng bẩn, chim ốm, tối chưa trùm áo); chạm vào là làm luôn. Chế độ "Ngắm chim" ẩn các bảng để ngắm cảnh.
 - Chạm vào cóng nước, máng ăn, khay lồng, áo lồng hoặc con chim trong cảnh 3D để thao tác nhanh.
 - Giao diện phong cách Việt (giấy dó, tre, sơn mài, chàm), biểu tượng SVG, thông báo nổi, biểu đồ tổng kết. Desktop có bảng nổi hai bên, điện thoại có bảng tab phía dưới. Hỗ trợ chế độ sáng tối, giảm chuyển động.
-- Phím tắt: 1–0 các việc chính, Q quan sát, Y thú y, C chờ, N ngủ, phím cách tạm dừng, M âm thanh, V góc nhìn, S Sổ tay.
+- Phím tắt: 1–0 các việc chính, Q quan sát, Y thú y, C chờ, N ngủ, phím cách tạm dừng, M âm thanh, V góc nhìn, H ngắm chim (ẩn bảng), S Sổ tay.
 - Tự lưu tiến trình vào localStorage.
 
 ## Kiến trúc
@@ -72,7 +73,7 @@ src/
   ui/                  Giao diện DOM
     Hud.js, Modals.js, icons.js, styles.css
 tests/                 Kịch bản chơi tự động, test ngữ pháp tiếng hót
-docs/                  RESEARCH.md, GAME_DESIGN.md
+docs/                  RESEARCH.md, GAME_DESIGN.md, GAME_RESEARCH.md (bài học từ game cùng thể loại)
 ```
 
 Luồng dữ liệu một chiều: UI gọi `game.act(id, payload)`; `Game` chạy logic rồi phát sự kiện `change`, `log`, `event`, `report`, `final`, `over` qua `EventBus`; `World` và `Hud` chỉ đọc trạng thái để vẽ. Nhờ tách lớp `core`, toàn bộ luật chơi test được trên Node bằng RNG có seed.

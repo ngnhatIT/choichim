@@ -33,6 +33,14 @@ const LABELS = {
   tutor: 'Cho nghe giọng mồi', look: 'Quan sát kỹ', vet: 'Đưa đi thú y', wait: 'Chờ 30 phút', sleep: 'Cho chim ngủ',
 };
 const TREND = 5; // chênh lệch trong khoảng 1 giờ game đủ để hiện mũi tên
+// Nhu cầu hiện thành bong bóng trên đầu chim (như Tamagotchi): [hành động, nhãn, độ gấp (càng lớn càng gấp) hoặc 0]
+const NEEDS = [
+  ['vet', 'Chim đang ốm, nên đưa đi thú y', (S) => (S.sick ? 100 : 0)],
+  ['staple', 'Máng sắp hết thức ăn', (S) => (!S.feeder.type || S.feeder.amt < 15 ? 90 - S.hunger * 0.5 : 0)],
+  ['water', 'Nước ít hoặc bẩn, cần thay', (S) => (S.water.level < 30 || S.water.clean < 40 ? 85 - Math.min(S.water.level, S.water.clean) * 0.5 : 0)],
+  ['clean', 'Lồng bẩn, cần dọn', (S) => (S.cage < 40 ? 70 - S.cage * 0.5 : 0)],
+  ['cover', 'Tối rồi, trùm áo cho chim ngủ', (S) => (S.t >= SLEEP_FROM && !S.covered ? 60 : 0)],
+];
 
 function actLabel(id, S, sp) {
   if (id === 'sun') return S.pos === 'san' ? 'Mang lồng vào' : 'Ra sân phơi nắng';
@@ -65,6 +73,16 @@ export class Hud {
     $('#paused').innerHTML = icon('pause') + 'Đang dừng';
     $('#hbBtn').innerHTML = icon('book') + '<span class="lbl">Sổ tay</span>';
     $('#hbBtn').setAttribute('aria-label', 'Sổ tay');
+    $('#focusBtn').innerHTML = icon('bird') + '<span class="lbl">Ngắm chim</span>';
+    $('#focusBtn').setAttribute('aria-label', 'Ngắm chim, ẩn các bảng');
+    $('#focusBtn').addEventListener('click', () => this.toggleFocus());
+    $('#focusPill').innerHTML = icon('eye') + '<span>Đang ngắm chim. Bấm hoặc nhấn <kbd>H</kbd> để hiện lại các bảng</span>';
+    $('#focusPill').addEventListener('click', () => this.toggleFocus(false));
+    this.needsEl = $('#needs');
+    this.needsEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-act]');
+      if (b) this.trigger(b.dataset.act);
+    });
     $('#logH').innerHTML = icon('notebook') + 'Nhật ký';
     $('#hint').innerHTML = icon('bulb') + '<span>Chạm vào cóng nước, máng ăn, khay lồng hoặc con chim trong cảnh 3D để thao tác nhanh. Phím tắt ghi ở góc mỗi nút, phím cách để dừng thời gian.</span>';
     const tabIc = { stats: 'chart', actions: 'list', log: 'notebook' };
@@ -87,7 +105,7 @@ export class Hud {
     this.initKeys();
     // Toạ độ mép dưới thanh trên (thanh có thể xuống 2 dòng trên màn hình hẹp)
     const tb = $('#topbar');
-    const setTop = () => document.documentElement.style.setProperty('--top', Math.round(tb.getBoundingClientRect().bottom + 10) + 'px');
+    const setTop = () => { this.topY = Math.round(tb.getBoundingClientRect().bottom + 10); document.documentElement.style.setProperty('--top', this.topY + 'px'); };
     new ResizeObserver(setTop).observe(tb);
     setTop();
     // Dòng nhật ký phát ra cùng lúc với một thao tác là phản hồi cho người chơi: luôn hiện thông báo
@@ -126,6 +144,14 @@ export class Hud {
     this.speed = v;
     document.querySelectorAll('[data-speed]').forEach((x) => x.setAttribute('aria-pressed', String(+x.dataset.speed === v)));
     $('#paused').hidden = v !== 0;
+  }
+
+  /** Chế độ ngắm chim: ẩn các bảng cho cảnh 3D và con chim làm chính (bong bóng nhu cầu vẫn hiện). */
+  toggleFocus(on = !document.body.classList.contains('focus')) {
+    document.body.classList.toggle('focus', on);
+    $('#focusBtn').setAttribute('aria-pressed', String(on));
+    $('#focusPill').hidden = !on;
+    if (on && this.world.view !== 'close') { this.world.setView('close'); this.syncView(); }
   }
 
   toggleView() {
@@ -191,6 +217,7 @@ export class Hud {
       if (k === 'M') this.toggleMute();
       else if (k === 'V') this.toggleView();
       else if (k === 'S') this.modals.handbook();
+      else if (k === 'H') this.toggleFocus();
       else if (BY_KEY[k] && this.shown?.has(BY_KEY[k])) {
         const b = $(`#actions [data-act="${BY_KEY[k]}"]`);
         b?.classList.remove('flash'); void b?.offsetWidth; b?.classList.add('flash');
@@ -257,6 +284,7 @@ export class Hud {
     this.renderVoice(S, sp);
     this.renderActions(S, sp);
     this.renderGoals(S, sp);
+    this.renderNeeds(S);
     setHtml($('#ticker'), S.log.slice(0, this.narrow.matches ? 40 : 3).map(entryHtml).join(''));
   }
 
@@ -405,6 +433,12 @@ export class Hud {
     setHtml($('#goalList'), goals.map((x) => `<li class="goal${x.done ? ' done' : ''}"${x.hint && x !== next ? ` data-tip="${esc(x.hint)}"` : ''}><span class="ck">${icon('check')}</span><span><span class="g-label">${esc(x.label)}</span><span class="sr-only">${x.done ? ', đã xong' : ', chưa xong'}</span>${x === next && x.hint ? `<span class="g-hint">${esc(x.hint)}</span>` : x.hint ? `<span class="sr-only">. ${esc(x.hint)}</span>` : ''}</span></li>`).join(''));
   }
 
+  renderNeeds(S) {
+    const list = S.over ? [] : NEEDS.map(([id, label, f]) => [id, label, f(S)]).filter(([id, , u]) => u > 0 && !this.game.blocked(id))
+      .sort((a, b) => b[2] - a[2]).slice(0, 3);
+    setHtml(this.needsEl, list.map(([id, label, u]) => `<button class="need${u >= 80 ? ' urgent' : ''}" data-act="${id}" aria-label="${esc(label)}" data-tip="${esc(label)}">${icon(ACTION_ICON[id])}</button>`).join(''));
+  }
+
   /* ---------- Thông báo nổi ---------- */
   onLog(entry) { this.logQ.push(entry); this.queueFlush(); }
 
@@ -474,6 +508,14 @@ export class Hud {
       this.bubble.style.left = p.x + 'px';
       this.bubble.style.top = p.y + 'px';
     } else if (!this.bubble.hidden) this.bubble.hidden = true;
+    // Bong bóng nhu cầu bám theo đầu chim, nằm trên bong bóng lời nói nếu có
+    const n = this.needsEl;
+    if (S && n.childElementCount && !this.modals.isOpen()) {
+      const p = this.world.headScreen();
+      n.hidden = !p.visible;
+      const y = Math.max(p.y - (show ? 44 : 6), (this.topY || 0) + 44); // không chui xuống dưới thanh trên
+      n.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
+    } else if (!n.hidden) n.hidden = true;
     requestAnimationFrame(() => this.bubbleLoop());
   }
 }

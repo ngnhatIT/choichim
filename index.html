@@ -47,6 +47,7 @@
           </div>
         </div>
         <button class="tb-btn" id="viewBtn" aria-keyshortcuts="V" data-tip="Đổi góc nhìn (V)"></button>
+        <button class="tb-btn" id="focusBtn" aria-keyshortcuts="H" aria-pressed="false" data-tip="Ngắm chim, ẩn bảng (H)"></button>
         <button class="tb-btn" id="hbBtn" aria-keyshortcuts="S" data-tip="Sổ tay nuôi chim (S)"></button>
       </div>
     </div>
@@ -89,6 +90,8 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <div class="tip" id="tip" aria-hidden="true" hidden></div>
   <div class="bubble" id="bubble" hidden></div>
+  <div class="needs" id="needs" role="group" aria-label="Chim đang cần"></div>
+  <button class="focus-pill" id="focusPill" hidden></button>
   <div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="mTitle"><div class="modal" id="modal"></div></div>
   <noscript>Lồng Tre cần JavaScript và WebGL để chạy.</noscript>
   <script type="module" src="/src/main.js"></script>

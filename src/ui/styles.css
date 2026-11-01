@@ -850,6 +850,41 @@ body:has(.overlay.show) .toasts { top: auto; bottom: calc(16px + env(safe-area-i
   .medallion .i { width: 28px; height: 28px; }
 }
 
+/* ---------- Bong bóng nhu cầu trên đầu chim ---------- */
+.needs { position: fixed; z-index: 3; left: 0; top: 0; display: flex; gap: 6px; will-change: transform; }
+.needs[hidden], .needs:empty { display: none; }
+.need {
+  position: relative; width: 38px; height: 38px; border-radius: 50% 50% 50% 8px; border: 0; display: grid; place-items: center; cursor: pointer;
+  background: #FFFCF5; color: #85601A; box-shadow: 0 6px 16px -4px rgba(30, 16, 6, 0.45), inset 0 0 0 1.5px rgba(184, 134, 42, 0.45);
+  animation: need-in 0.4s var(--spring) both, need-bob 2.4s ease-in-out 0.4s infinite;
+}
+.need:nth-child(2) { animation-delay: 0.06s, 0.7s; }
+.need:nth-child(3) { animation-delay: 0.12s, 1s; }
+.need .i { width: 20px; height: 20px; }
+.need.urgent { color: #FFF8EE; background: #A8381F; box-shadow: 0 6px 16px -4px rgba(120, 30, 10, 0.6), 0 0 0 4px rgba(168, 56, 31, 0.22); }
+.need:hover { transform: scale(1.1); animation-play-state: paused; }
+.need:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+@keyframes need-in { from { opacity: 0; transform: translateY(8px) scale(0.6); } }
+@keyframes need-bob { 50% { transform: translateY(-4px); } }
+
+/* ---------- Chế độ ngắm chim ---------- */
+.panel, .tabs { transition: opacity 0.28s var(--ease), translate 0.36s var(--ease), visibility 0s; }
+body.focus .panel, body.focus .tabs { opacity: 0; visibility: hidden; pointer-events: none; translate: 0 20px; transition: opacity 0.22s var(--ease), translate 0.3s var(--ease), visibility 0s 0.3s; }
+body.focus .panel-stats { translate: -24px 0; }
+body.focus .panel-actions { translate: 24px 0; }
+#focusBtn[aria-pressed="true"] { background: var(--gold-soft); }
+#focusBtn[aria-pressed="true"] .i { color: var(--gold-ink); }
+.focus-pill {
+  position: fixed; z-index: 5; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border: 0; border-radius: 999px; cursor: pointer;
+  background-color: var(--panel); background-image: var(--grain); color: var(--ink-2); font: 600 0.84rem var(--font-ui);
+  box-shadow: var(--shadow), var(--rim); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); animation: need-in 0.4s var(--spring) both;
+}
+.focus-pill[hidden] { display: none; }
+.focus-pill .i { width: 17px; height: 17px; color: var(--gold-ink); }
+.focus-pill kbd { font: 700 0.72rem var(--font-ui); padding: 1px 6px; border-radius: 5px; background: var(--sunken); }
+@media (hover: none) and (pointer: coarse) { .focus-pill kbd { display: none; } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
   .eq i { transform: scaleY(0.7); }

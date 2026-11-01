@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { budgieBarring, contourTextures, featherTexture, scaleTexture } from './textures.js';
+import { budgieBarring, contourTextures, featherTexture, fuzzTexture, scaleTexture } from './textures.js';
 
 const lerp = (a, b, k) => a + (b - a) * k;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -26,8 +26,8 @@ function shared() {
   if (G) return G;
   const lathe = (pts, seg) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
   // Thân thuôn: tròn ở ngực, thon về phía đuôi. Trục +x là phía trước.
-  const torso = lathe([[0.002, -0.058], [0.012, -0.05], [0.022, -0.038], [0.03, -0.022], [0.035, -0.006],
-    [0.037, 0.008], [0.035, 0.022], [0.028, 0.036], [0.017, 0.047], [0.002, 0.054]], 22);
+  const torso = lathe([[0, -0.058], [0.012, -0.05], [0.022, -0.038], [0.03, -0.022], [0.035, -0.006],
+    [0.037, 0.008], [0.035, 0.022], [0.028, 0.036], [0.017, 0.047], [0, 0.054]], 22); // hai đầu khép kín, không hở lỗ ở ngực
   torso.rotateZ(-Math.PI / 2);
   // Lông vũ: tấm phẳng hơi cong (gốc ở gốc tọa độ, ngọn ở x = -1, rộng 1 theo z, cong lên theo y), uv u: gốc → ngọn
   const feather = new THREE.PlaneGeometry(1, 1, 6, 2);
@@ -55,7 +55,10 @@ function shared() {
 
 /** Mỏ: hình nón nằm ngang (gốc x = 0, chóp x = len), uốn cong xuống theo `curve`. */
 function billGeo(len, r, curve, deep = 1) {
-  const g = new THREE.ConeGeometry(r, len, 10, 4).rotateZ(-Math.PI / 2).translate(len / 2, 0, 0);
+  // Tiện theo đường bao hơi phồng (ConeGeometry thiếu nửa số tam giác ở hình nhỏ này, nhìn lởm chởm)
+  const prof = [];
+  for (let i = 0; i <= 8; i++) { const t = i / 8; prof.push(new THREE.Vector2(r * Math.pow(1 - t, 0.8) + 1e-5, len * t)); }
+  const g = new THREE.LatheGeometry(prof, 16).rotateZ(-Math.PI / 2); // đáy mở, khuất trong đầu
   g.scale(1, deep, 0.8);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) { const x = p.getX(i) / len; p.setY(i, p.getY(i) - curve * x * x * len * 0.6); }
@@ -102,6 +105,7 @@ function traitsFor(key, model) {
   if (model.brow) { T.gestures.flick = 1.3; T.bold = 1; }
   if (C.eyeRing && !model.brow) { T.ring = 0.0024; T.gestures.fidget = 1.6; T.hopRate = 2.8; }
   Object.assign(T, TUNE[key] || {});
+  T.head *= 1.1; // đầu to hơn thật một chút: tỉ lệ "dễ thương" (Kindchenschema), xem docs/GAME_RESEARCH.md
   if (T.twoFoot) T.gestures.sidestep = (T.gestures.sidestep || 0) + 0.8; // nhảy hai chân dọc cầu
   // Màu phụ suy ra từ màu sẵn có
   T.throat = C.throat || C.whiteCheek || (model.lowBelly || model.parrot ? C.head : mixHex(C.head, C.belly, 0.5));
@@ -198,7 +202,7 @@ export class Bird {
     this.nextBlink = 2; this.blinkT = 0;
     this.splash = 0; // cường độ văng nước lúc rũ mình (World đọc để phun giọt)
     this.v = new THREE.Vector3();
-    this.mats = []; this.geos = []; this.texs = []; this.featherMats = []; this.wingMats = [];
+    this.mats = []; this.geos = []; this.texs = []; this.featherMats = []; this.wingMats = []; this.shells = [];
   }
 
   // -------------------------------------------------------------------------
@@ -230,6 +234,30 @@ export class Bird {
     };
     const mesh = (geo, mat, sx, sy, sz, x = 0, y = 0, z = 0, parent) => {
       const m = new THREE.Mesh(geo, mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); parent?.add(m); return m;
+    };
+    // Lông tơ: các lớp vỏ (shell) nở dọc pháp tuyến, cắt bằng mật độ ngẫu nhiên → viền mềm, xốp như lông thật.
+    // Một InstancedMesh mỗi phần, gl_InstanceID là chỉ số lớp; con của mesh gốc nên co giãn, xù lông theo.
+    const fz = fuzzTexture();
+    const fuzz = (base, len, rep, layers = 6) => {
+      const am = fz.clone(); am.wrapS = am.wrapT = THREE.RepeatWrapping; am.repeat.set(...rep); am.needsUpdate = true;
+      this.texs.push(am);
+      const vc = !!base.geometry.attributes.color;
+      const m = new THREE.MeshStandardMaterial({ color: vc ? '#ffffff' : base.material.color, vertexColors: vc, alphaMap: am, alphaTest: 0.5, roughness: 0.95 });
+      const L = (len / base.scale.y).toFixed(5);
+      m.onBeforeCompile = (sh) => {
+        sh.vertexShader = 'varying float vLay;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+          `#include <begin_vertex>\nvLay = (float(gl_InstanceID) + 1.0) / ${layers}.0;\ntransformed += objectNormal * ${L} * vLay;`);
+        sh.fragmentShader = 'varying float vLay;\n' + sh.fragmentShader.replace('#include <alphamap_fragment>',
+          'diffuseColor.a = step(0.18 + 0.78 * vLay, texture2D(alphaMap, vAlphaMapUv).g);\ndiffuseColor.rgb *= mix(0.82, 1.08, vLay);')
+          // Viền sáng Fresnel ở mép dáng: chim lông tối vẫn nổi khỏi nền phòng tối
+          .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nfloat rim = pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 3.0) * vLay;\ntotalEmissiveRadiance += (diffuseColor.rgb * 0.5 + vec3(0.09, 0.08, 0.06)) * rim;');
+      };
+      m.customProgramCacheKey = () => `fuzz${L}/${layers}`;
+      this.mats.push(m);
+      const sh = new THREE.InstancedMesh(base.geometry, m, layers);
+      sh.frustumCulled = false;
+      base.add(sh); this.shells.push(sh);
+      return sh;
     };
     const root = new THREE.Group();
     root.scale.setScalar(model.size);
@@ -269,7 +297,9 @@ export class Bird {
     this.geos.push(torsoGeo);
     const torso = mesh(torsoGeo, vc, T.long, T.plump, T.plump * 0.82, 0, 0, 0, body);
     torso.castShadow = true;
+    fuzz(torso, 0.0026, [7, 5], 7);
     const ventM = mesh(g.lo, plume(T.vent, [3, 2]), 0.017, 0.009, 0.013, -0.04, -0.017, 0, body); // lông dưới đuôi
+    fuzz(ventM, 0.0022, [3, 2], 5);
 
     // Cánh có khớp vai → khuỷu → cổ tay. Dựng ở tư thế xếp: mặt cánh áp sườn (mặt phẳng xy của vai),
     // xương hướng ra sau (-x). Dang cánh = xoay vai quanh trục thân; duỗi = xoay khuỷu, cổ tay trong mặt cánh.
@@ -298,6 +328,7 @@ export class Bird {
       // Lông phủ nhỏ ở vai (khối tròn trên cánh xếp)
       const cov = mesh(g.sphere, wingMat, 0.02 * W, 0.0115, 0.0068, -0.008 * W, 0.0035, s * 0.0016, sh);
       cov.castShadow = true;
+      if (!model.barring) fuzz(cov, 0.0012, [3, 2], 4);
       // Lông phủ giữa: một hàng lông nhỏ viền mép dưới khối lông phủ cho mềm mại
       for (let i = 0; i < 6; i++) card(sh, mcMat, 0.0125 * W, 0.0085, 0.004 - i * 0.0034 * W, -0.0045 + i * 0.0003, s * 0.0056, 0.25 + i * 0.04, 0.15 + i * 0.08);
       if (C.wingPatch) mesh(g.lo, M(C.wingPatch), 0.0075, 0.0055, 0.0032, -0.003, -0.004, s * 0.0034, wrist);
@@ -312,18 +343,24 @@ export class Bird {
     for (let i = 0; i < N; i++) {
       const c = i - half, edge = Math.abs(c) / half;
       const len = L * lerp(1, T.tailShape, edge * edge);
-      const m = mesh(g.feather, edgeMat && edge > 0.5 ? edgeMat : tailMat, len, T.tailW, T.tailW, 0, (1 - edge) * 0.0014, 0, tailPivot);
+      const m = mesh(g.feather, edgeMat && edge > 0.5 ? edgeMat : tailMat, len, T.tailW * 1.3, T.tailW * 1.3, 0, (1 - edge) * 0.0014, 0, tailPivot);
+      m.rotation.x = 0.3 * c / half; // xếp hình mái: lông ngoài rủ xuống, nhìn ngang vẫn thấy bản đuôi
       m.castShadow = true;
       if (tipMat) mesh(g.feather, tipMat, 0.24, 1.04, 1.04, -0.76, 0.004, 0, m);
       tail.push({ m, c, len });
     }
     const tailTip = new THREE.Object3D(); tailTip.position.x = -L; tailPivot.add(tailTip);
+    // Lông phủ trên đuôi: khối mềm nối lưng với đuôi
+    fuzz(mesh(g.lo, plume(C.body, [3, 2]), 0.022, 0.0055, 0.011, -0.004, 0.0035, 0, tailPivot), 0.0016, [3, 2], 4);
 
     // Cổ (luôn giữ đầu ngang) và họng phồng khi hót
     const neck = new THREE.Group(); neck.position.set(0.032, 0.02, 0); body.add(neck);
     const hr = T.head, hs = hr / 0.024;
-    const throat = mesh(g.lo, plume(T.throat, [3, 3]), 0.013 * hs, 0.0145 * hs, 0.0145 * hs, 0.005, -0.006, 0, neck);
+    const throat = mesh(g.lo, plume(T.throat, [3, 3]), 0.014 * hs, 0.016 * hs, 0.0185 * hs, 0.005, -0.006, 0, neck);
     throat.userData.base = throat.scale.clone();
+    fuzz(throat, 0.0022, [4, 4], 6);
+    // Gáy: lấp chỗ nối đầu với lưng để đầu liền thân, không như người tuyết
+    fuzz(mesh(g.lo, plume(T.nape || mixHex(C.head, C.body, 0.35), [3, 3]), 0.016 * hs, 0.016 * hs, 0.0175 * hs, -0.008, 0.002, 0, neck), 0.002, [4, 4], 5);
 
     // Đầu
     const head = new THREE.Group(); head.rotation.order = 'YZX'; head.position.set(0.006, 0.014, 0); neck.add(head);
@@ -341,6 +378,7 @@ export class Bird {
     this.geos.push(headGeo);
     const skull = mesh(headGeo, vcHead, hr * 1.04, hr, hr * 0.9, 0, 0, 0, head);
     skull.castShadow = true;
+    fuzz(skull, 0.0011, [9, 6], 5);
     const decal = (dir, sx, sy, sz, mat, spin = 0, geo = g.lo) => {
       const d = new THREE.Vector3(...dir).normalize();
       const m = mesh(geo, mat, sx * hs, sy * hs, sz * hs, d.x * hr * 1.0, d.y * hr * 0.96, d.z * hr * 0.92, head);
@@ -350,8 +388,8 @@ export class Bird {
     };
 
     // Mắt: tròng đen bóng, đốm sáng, vòng mắt (khuyên, họa mi), vệt mi trắng (họa mi)
-    const eyeR = 0.0042 * hs * (T.ring > 0.002 ? 0.9 : 1);
-    const eyeMat = new THREE.MeshPhysicalMaterial({ color: T.parrot ? '#1A120C' : '#2A170D', roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.03 }); this.mats.push(eyeMat);
+    const eyeR = 0.0049 * hs * (T.ring > 0.002 ? 0.9 : 1);
+    const eyeMat = new THREE.MeshPhysicalMaterial({ color: T.parrot ? '#D9D4C8' : C.iris || '#4A2914', roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.03 }); this.mats.push(eyeMat);
     const pupilMat = M('#050403', { roughness: 0.2 });
     const lidMat = M(C.head, { roughness: 0.85 });
     const glint = new THREE.MeshBasicMaterial({ color: '#ffffff' }); this.mats.push(glint);
@@ -361,8 +399,10 @@ export class Bird {
       const holder = new THREE.Group(); holder.position.copy(d); head.add(holder);
       const ball = new THREE.Group(); holder.add(ball);
       mesh(g.lo, eyeMat, eyeR, eyeR, eyeR, 0, 0, 0, ball);
-      mesh(g.lo, pupilMat, eyeR * 0.55, eyeR * 0.55, eyeR * 0.3, 0, 0, s * eyeR * 0.82, ball);
-      mesh(g.lo, glint, eyeR * 0.22, eyeR * 0.22, eyeR * 0.22, eyeR * 0.38, eyeR * 0.42, s * eyeR * 0.86, ball);
+      mesh(g.lo, pupilMat, eyeR * (T.parrot ? 0.5 : 0.68), eyeR * (T.parrot ? 0.5 : 0.68), eyeR * 0.34, 0, 0, s * eyeR * 0.8, ball);
+      // Hai đốm sáng: một to phía trên trước, một nhỏ phía dưới sau → mắt long lanh, có hồn
+      mesh(g.lo, glint, eyeR * 0.28, eyeR * 0.28, eyeR * 0.2, eyeR * 0.36, eyeR * 0.4, s * eyeR * 0.84, ball);
+      mesh(g.lo, glint, eyeR * 0.12, eyeR * 0.12, eyeR * 0.1, -eyeR * 0.3, -eyeR * 0.36, s * eyeR * 0.9, ball);
       const lid = mesh(g.lid, lidMat, eyeR * 1.14, eyeR * 1.14, eyeR * 1.14, 0, 0, 0, holder); // mí dưới kéo lên khi chớp
       if (ringMat) {
         const r = mesh(g.ring, ringMat, eyeR * 1.25, eyeR * 1.25, T.ring / 0.22 / 1.0 * 0.6, 0, 0, s * eyeR * 0.15, holder);
@@ -377,30 +417,33 @@ export class Bird {
 
     // Mỏ
     const [bl, br, curve] = T.bill;
-    const billMat = M(C.bill, { roughness: 0.38 });
+    const billMat = M('#ffffff', { roughness: 0.38, vertexColors: true });
+    const billBase = hex(shade(C.bill, 0.82)), billTip = hex(mixHex(C.bill, '#F4EEDC', 0.18));
+    const tint = (geo, len) => paint(geo, (x, y, z, out) => out.copy(billBase).lerp(billTip, sstep(0.1, 1, x / len)));
     const upper = new THREE.Group(); upper.position.set(hr * 0.78, -hr * (T.parrot ? 0.02 : 0.1), 0); head.add(upper);
-    const uGeo = billGeo(bl, br, curve, T.parrot ? 1.45 : 1); this.geos.push(uGeo);
+    const uGeo = tint(billGeo(bl, br, curve, T.parrot ? 1.45 : 1), bl); this.geos.push(uGeo);
     upper.add(new THREE.Mesh(uGeo, billMat));
     const beakTip = new THREE.Object3D(); beakTip.position.set(bl * 0.95, -curve * bl * 0.55, 0); upper.add(beakTip);
-    const lower = new THREE.Group(); lower.position.set(hr * 0.72, -hr * (T.parrot ? 0.3 : 0.24), 0); head.add(lower);
-    const lGeo = billGeo(bl * (T.parrot ? 0.55 : 0.88), br * 0.78, T.parrot ? -0.6 : -0.1, 0.7); this.geos.push(lGeo);
+    const lower = new THREE.Group(); lower.position.set(hr * 0.72, -hr * (T.parrot ? 0.3 : 0.29), 0); head.add(lower);
+    // Hàm dưới hẹp hơn hàm trên: hai mặt không trùng nhau nên không bị chập hình (z-fighting)
+    const lGeo = tint(billGeo(bl * (T.parrot ? 0.55 : 0.88), br * 0.74, T.parrot ? -0.6 : -0.1, 0.7).scale(1, 1, 0.84), bl * (T.parrot ? 0.55 : 0.88)); this.geos.push(lGeo);
     lower.add(new THREE.Mesh(lGeo, billMat));
 
     // Chi tiết đầu từng loài
     if (model.parrot) {
       decal([0.9, 0.12, 0], 0.0065, 0.004, 0.0045, M('#4F6FC8'), 0); // mũi (cere)
-      for (const s of [-1, 1]) decal([0.4, -0.55, s * 0.73], 0.0058, 0.0072, 0.0026, M(C.cheek)); // má tím
+      for (const s of [-1, 1]) fuzz(decal([0.4, -0.55, s * 0.73], 0.0058, 0.0072, 0.0026, M(C.cheek, { roughness: 0.9 })), 0.0006, [2, 2], 4); // má tím
       const dot = M('#141414');
       for (const zz of [-0.42, -0.16, 0.16, 0.42]) decal([0.68, -0.72, zz], 0.0022, 0.0022, 0.0016, dot); // đốm cổ
     } else if (C.cheek) {
-      for (const s of [-1, 1]) decal([0.02, -0.12, s * 0.99], 0.0068, 0.0055, 0.0024, M(C.cheek), s * 0.3); // má đỏ chào mào
+      for (const s of [-1, 1]) fuzz(decal([-0.05, -0.08, s * 0.99], 0.0072, 0.0046, 0.0018, M(C.cheek, { roughness: 0.9 }), s * 0.25), 0.0007, [2, 2], 4); // túm lông đỏ sau mắt chào mào
     }
     let crest = null;
     if (model.crest || model.tuft) {
       crest = new THREE.Group(); head.add(crest);
       const cm = featherMat(C.head);
       const list = model.crest
-        ? [[0.05, 0.016, 0, 0], [0.04, 0.017, 0.3, 0], [0.03, 0.016, 0.62, 0], [0.034, 0.012, 0.2, 0.003], [0.034, 0.012, 0.2, -0.003]]
+        ? [[0.054, 0.0115, 0, 0], [0.046, 0.0115, 0.15, 0.0016], [0.046, 0.0115, 0.15, -0.0016], [0.036, 0.012, 0.34, 0], [0.026, 0.012, 0.56, 0]]
         : [[0.019, 0.0075, 0, 0], [0.016, 0.007, 0.35, 0.0025], [0.016, 0.007, 0.35, -0.0025], [0.013, 0.007, 0.7, 0]];
       for (const [len, w, a, z] of list) { const m = mesh(g.featherV, cm, len, w, w, -a * 0.012, 0, z, crest); m.rotation.z = a; m.castShadow = true; }
       if (model.crest) { crest.position.set(hr * 0.12, hr * 0.84, 0); crest.userData.rest = -Math.PI / 2 + 0.32; crest.userData.up = -0.5; }
@@ -415,6 +458,7 @@ export class Bird {
   }
 
   dispose() {
+    for (const sh of this.shells || []) sh.dispose();
     this.group.clear();
     for (const m of this.mats) m.dispose();
     for (const g of this.geos) g.dispose();
