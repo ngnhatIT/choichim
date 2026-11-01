@@ -239,14 +239,25 @@ export const SONGS = {
 };
 
 /** Ghép một hiệp hót dài khoảng `dur` giây. seed: bộ câu riêng của cá thể; rng: ngẫu nhiên từng hiệp. */
-export function compose(sp, L, { seed = 1, rng = Math.random, dur = 5 } = {}) {
+/**
+ * young (0..1): độ "non" của giọng. Chim non tập hót (subsong rồi plastic song): nhỏ tiếng, cao độ chưa vững,
+ * nốt dài ngắn thất thường, hay bỏ dở giữa câu. 0 = giọng đã định của chim trưởng thành.
+ */
+export function compose(sp, L, { seed = 1, rng = Math.random, dur = 5, young = 0 } = {}) {
   const S = SONGS[sp], w = seq();
   L = Math.max(0, Math.min(4, Math.round(L)));
   if (!S.talk && L === 0) { // chưa ra giọng: kêu lí nhí, lộn xộn
     while (w.t < dur) w.add({ ...vary(rng() < 0.55 ? CALLS[sp].call : pick(rng, S.syl), rng, 0.08), g: R(rng, 0.35, 0.7) }, R(rng, 0.15, 0.55));
   } else S.sing(w, L, S.rep?.(createRng(seed)), rng, dur);
   const g = 0.55 + 0.1125 * L, p = 0.97 + 0.015 * L; // cấp cao: to hơn, sáng hơn
-  return w.out.map((n) => ({ ...n, h: n.h || S.tone, g: (n.g ?? 1) * g, f: n.f.map((x) => x * p) }));
+  let out = w.out.map((n) => ({ ...n, h: n.h || S.tone, g: (n.g ?? 1) * g, f: n.f.map((x) => x * p) }));
+  if (young > 0) {
+    const kept = out.filter(() => rng() > 0.25 * young);
+    out = (kept.length ? kept : out.slice(0, 1)).map((n) => ({
+      ...n, g: n.g * (1 - 0.4 * young), d: n.d * R(rng, 1, 1 + 0.3 * young), f: n.f.map((x) => x * R(rng, 1 - 0.07 * young, 1 + 0.07 * young)),
+    }));
+  }
+  return out;
 }
 
 // ---------- Tiếng gọi: call = tiếng gọi bạn, beg = đói khát kêu chiêm chiếp, alarm = hoảng, weak = ốm yếu
@@ -306,3 +317,32 @@ export const WILD = {
     return w.out;
   },
 };
+
+/**
+ * Nhịp hót thật khi ngồi nghe lâu (chế độ "Nghe chim"), tính bằng giây thật, cấp giọng cao nhất, giờ bình thường.
+ * phrase: độ dài một câu; gap: nghỉ giữa hai câu; n: số câu một hiệp; rest: nghỉ giữa hai hiệp.
+ * Chim thật không hót liên tục: hót thành hiệp, nghỉ chuyền cầu, rỉa lông rồi hót tiếp; sáng sớm hót dày nhất,
+ * trưa nắng thưa nhất. Thời gian nghỉ ngoài đời dài hơn (vài phút), ở đây rút gọn để người nghe không chờ quá lâu.
+ */
+export const SESSION = {
+  // Số đo: chào mào câu 3–6 tiếng ~1,2–2,5 s; chích chòe câu 5,1 ± 2,2 s, nghỉ xấp xỉ bằng câu; họa mi mỗi motif
+  // lặp 2–4 lần, câu 3–8 s; khuyên chuỗi nhanh 2–6 s. Xem docs/LIFECYCLE_RESEARCH.md mục 3.
+  chaomao: { phrase: [1.2, 2.5], gap: [2, 6], n: [6, 14], rest: [25, 70] },
+  chichchoe: { phrase: [3, 7], gap: [2.5, 6], n: [8, 18], rest: [30, 80] },
+  hoami: { phrase: [3, 7], gap: [2.5, 6], n: [6, 14], rest: [35, 90] },
+  khuyen: { phrase: [2, 5], gap: [1, 4], n: [5, 12], rest: [20, 55] },
+  sao: { phrase: [2, 5.5], gap: [2.5, 7], n: [4, 9], rest: [30, 75] },
+  yenphung: { phrase: [4, 11], gap: [1, 3.5], n: [5, 14], rest: [20, 60] },
+};
+
+/** Lên một hiệp hót: [{ dur, gap }] và thời gian nghỉ sau hiệp. L: cấp giọng 0..4, hour: giờ trong game. */
+export function planBout(sp, L, hour, r = Math.random) {
+  const T = SESSION[sp];
+  // Tỉ lệ thời gian hót mỗi giờ (ước lượng): bình minh 35–50%, 9–11 giờ 10–15%, trưa 2–5%, chiều 10–20%
+  const dawn = hour >= 5.5 && hour < 9, noon = hour >= 11 && hour < 14.5, late = hour >= 9 && hour < 11;
+  const k = L / 4; // cấp thấp: câu ngắn, ngập ngừng, hiệp ngắn, nghỉ lâu
+  const n = Math.max(2, Math.round(R(r, ...T.n) * (0.45 + 0.55 * k) * (dawn ? 1.3 : 1)));
+  const phrases = Array.from({ length: n }, () => ({ dur: R(r, ...T.phrase) * (0.55 + 0.45 * k), gap: R(r, ...T.gap) * (1.5 - 0.5 * k) }));
+  const rest = R(r, ...T.rest) * (1.6 - 0.6 * k) * (dawn ? 0.6 : noon ? 4 : late ? 1.6 : 1.2);
+  return { phrases, rest };
+}

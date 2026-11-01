@@ -38,6 +38,27 @@ Mỗi bệnh có một bộ đếm nguy cơ. Điều kiện xấu cộng dồn n
 - "Cho nghe giọng mồi" (`tutor`, 20 phút): mở tiếng một con chim hót hay cho chim tập theo, cách luyện giọng phổ biến của người chơi chim. Chỉ cho loài hót; bị chặn khi trùm áo, sau 19 giờ, khi chim ốm. Hai lần đầu mỗi ngày: sung +1,5. Từ lần thứ ba: tâm trạng −8, sung −2 (chim bị "đè lửa"). Thay lông: nhắc nhở, không có tác dụng. Chim mới về: tính là làm phiền.
 - Cân bằng (test 14 ngày): chăm tốt thường đạt Hót đổ dài; thêm giọng mồi 2 lần mỗi ngày đạt Giọng vàng vào ngày 13–14; chăm qua loa (không đồ tươi, nắng, trò chuyện) ở Chưa ra giọng.
 
+## Tuổi chim (`data/stages.js`)
+
+Người chơi chọn tuổi khi đón chim. Mỗi giai đoạn khác nhau thật sự về nhu cầu và cách học, không chỉ về hình:
+
+| | Chim chuyền (1–4 tháng) | Trưởng thành (1–3 năm) | Lâu năm (từ 5 năm) |
+|---|---|---|---|
+| Thân thiết lúc về | 28 (nuôi tay, dạn người) | 8 | 18 |
+| Giọng lúc về | 4 (líu ríu tập hót) | 12 | 58 (giọng đã định) |
+| Trần giọng trong 14 ngày | 60 (chưa định giọng) | 100 | 100 |
+| Tiến bộ giọng / giọng mồi | ×1,1 / ×1,7 (giai đoạn học nhạy) | ×1 / ×1 | ×0,45 / ×0,3 |
+| Học nói (loài nói) | ×1,5 | ×1 | ×0,6 |
+| Tốc độ đói | ×1,15 (đang lớn) | ×1 | ×0,95 |
+| Ngưỡng phát bệnh | nguy cơ ×1,25, cảm lạnh thêm ×1,5 | ×1 | ×1,2, cảm lạnh thêm ×1,3 |
+| Mùa thay lông | Lần đầu đời: lông non đổi dần sang lông trưởng thành | Bình thường | Mệt hơn (độ sung giảm nhanh hơn) |
+
+Bộ lông non từng loài (`model.juvenile` trong `species.js`): chào mào chưa có túm đỏ sau mắt, mào ngắn, lông dưới đuôi cam hồng; chích chòe nâu xám, ngực lốm đốm; yến phụng mắt đen tuyền, vằn kéo tới trán, mũi hồng; sáo nâu xám, chỏm trán ngắn; khuyên xỉn, vòng mắt mảnh; họa mi nâu xỉn, vệt mi mờ. Giọng chim non (`compose(..., { young })`) nhỏ, cao độ chưa vững, hay bỏ dở; vững dần khi giọng tiến bộ.
+
+## Nghe chim khi treo máy
+
+Nút "Nghe chim" (phím L) hoặc tự bật sau 2 phút không thao tác: thời gian game dừng (chim không đói khát khi người chơi vắng), các bảng ẩn, chim hót theo nhịp thật (`SESSION`, `planBout` trong `audio/songs.js`): từng câu, nghỉ giữa câu, hết hiệp nghỉ lâu và thỉnh thoảng gọi khẽ; sáng sớm hót dày, trưa thưa; cấp giọng thấp thì câu ngắn, ngập ngừng. Chim chỉ hót khi thật sự hót được (không trùm áo, không ốm, ban ngày, đủ vui); không thì im và dòng nhắc nói lý do. Vẫn phát khi chuyển sang tab khác. Thao tác bất kỳ để quay lại.
+
 ## Sự kiện gia đình
 
 Đầu mỗi ngày, mỗi sự kiện được tung xúc xắc theo xác suất và gán một phút ngẫu nhiên trong khung giờ của nó. Đến giờ, nếu điều kiện đúng (ví dụ lồng đang ở phòng khách khi thắp nhang), game dừng và hỏi người chơi chọn một trong hai phương án. Lựa chọn đầu tiên luôn là cách làm đúng (test tự động dựa vào điều này). Một ván chăm tốt gặp khoảng 18–21 sự kiện.

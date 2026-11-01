@@ -33,9 +33,33 @@ export const HANDBOOK = [
     ],
   },
   {
+    id: 'age', title: 'Tuổi chim và giọng hót',
+    items: [
+      'Chim non trong tổ cần đút 20–30 phút một lần suốt ngày, giữ ấm, không tắm. Đừng bắt chim non từ tổ hoang, kể cả chim "rơi tổ": báo cơ sở cứu hộ.',
+      'Chim chuyền (non mới rời tổ) đang tập tự ăn: thêm mồi mềm vài lần mỗi ngày, giữ ấm, chỉ tắm khi đã đậu và mổ vững.',
+      'Lần thay lông đầu đời (khoảng 1–4 tháng sau khi rời tổ) chim khoác lông trưởng thành: chào mào mới có túm đỏ sau mắt và mào dài; yến phụng hết vằn ở trán, mắt có vòng trắng.',
+      'Chim biết hót học giọng qua các bước: nghe và nhớ, líu ríu nhỏ trong cổ, tập hót còn đổi, rồi giọng mới "định". Chào mào thường định giọng sau một hai mùa.',
+      'Chim tơ dễ "lai giọng": treo gần chim hót dở, tiếng ồn, tiếng huýt sáo thì học sai và rất khó sửa.',
+      'Giọng mồi mỗi ngày tối đa 2 lần, mỗi lần 20–30 phút, vào 6:00–7:30 hoặc 15:00–16:30, loa cách lồng 2–3 m. Không mở cả ngày.',
+      'Thường chỉ chim trống hót (chích chòe, họa mi, chào mào); chim mái hót ít hoặc không.',
+      'Chim lâu năm giọng đã định, hót chắc nhưng khó học thêm; cần giữ ấm, giảm cường độ luyện.',
+    ],
+  },
+  {
+    id: 'fire', title: 'Độ lửa (độ sung)',
+    items: [
+      'Xuống lửa: mào cụp, lông hơi xù, hót rời rạc hoặc bỏ hót. Cần ăn đủ chất, nắng sớm, ngủ đủ, để yên tĩnh.',
+      'Vừa lửa: lông ép gọn, đứng thẳng, nhảy cầu đều.',
+      'Căng lửa: lông ép sát, đuôi vểnh, hót to và đều. Đây là lúc chim đẹp nhất.',
+      'Quá lửa: nhảy loạn lồng, đập cánh, hót gắt. Ép nhiều mồi, thuốc kích lửa làm chim suy nhược, lông mới xoắn. Bớt mồi, bớt giọng mồi, cho tắm để hạ lửa.',
+      'Khàn tiếng có thể là bệnh hô hấp, không phải lỗi luyện giọng: nên đưa đi bác sĩ thú y.',
+    ],
+  },
+  {
     id: 'sick', title: 'Dấu hiệu bệnh',
     items: [
       'Xù lông, ủ rũ, lim dim, bỏ ăn.',
+      'Đứng yên mà đuôi vẫn nhấp theo từng nhịp thở, hoặc ngủ đứng cả hai chân: chim đang khó thở hoặc rất mệt.',
       'Phân lỏng, đổi màu. Phân khỏe thường khô, có phần trắng và phần đen.',
       'Thở khó, khò khè, mắt mũi bẩn, sưng.',
       'Sụt cân, tự nhổ lông hoặc rụng lông bất thường.',

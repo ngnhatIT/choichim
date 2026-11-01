@@ -3,7 +3,8 @@ import { STAPLES } from '../data/foods.js';
 import { LOCATIONS } from '../data/locations.js';
 import { WEATHER, rollWeather } from '../data/weather.js';
 import { SONG_LEVELS, songLevel } from '../data/song.js';
-import { DAY_START, LATE_SLEEP, MOLT_END, MOLT_START, TOTAL_DAYS } from '../config.js';
+import { stageOf, isYoung, moltDays } from '../data/stages.js';
+import { DAY_START, LATE_SLEEP, TOTAL_DAYS } from '../config.js';
 import { feederAcceptance } from './simulation.js';
 import { newToday } from './state.js';
 import { clamp } from './util.js';
@@ -29,15 +30,22 @@ export function endDay(S, ctx, forced) {
   } else if (avg < 0.8) {
     add(false, 'Thức ăn chính chưa tối ưu', `Hợp nhất với ${sp.short} là ${best}.${S.sp === 'yenphung' && S.feeder.type === 'ke' ? ' Chế độ chỉ ăn hạt dễ gây béo phì, thiếu chất; hãy trộn dần sang thức ăn viên.' : ''}`);
     S.vigor -= 4; S.feather -= 2;
+  } else if (!T.refill) {
+    add(false, 'Chưa thay thức ăn mới', 'Cám để qua ngày dễ ẩm mốc, chim ăn dễ đau bụng: đổ cám mới mỗi ngày.'); S.risk.tieu_chay += 10;
   } else add(true, 'Thức ăn chính đúng loài', STAPLES[sp.best].name);
 
   if (sp.needs.fresh) {
     if (T.fresh > 0) add(true, 'Có trái cây, rau tươi', 'Bổ sung vitamin, giúp chim khỏe và lên màu.');
     else { add(false, 'Thiếu trái cây, rau tươi', `${sp.name} cần đồ tươi hằng ngày.`); S.vigor -= 6; S.feather -= 2; }
   }
-  if (sp.needs.protein) {
+  if (isYoung(S)) {
+    if (T.protein >= 2) add(true, 'Chim non được ăn mồi mềm nhiều bữa', 'Đạm dễ tiêu giúp chim chuyền lớn nhanh, thay lông đầu đẹp.');
+    else { add(false, 'Chim non thiếu mồi mềm', 'Chim chuyền đang lớn cần ít nhất 2 bữa mồi mềm mỗi ngày (trứng, mồi nhỏ hợp loài).'); S.vigor -= 6; S.feather -= 3; }
+  } else if (sp.needs.protein) {
+    // Mồi tươi vài lần mỗi tuần là đủ (cám chuyên dụng đã có đạm); chim đang căng lửa thì bớt mồi là đúng
     if (T.protein > 0) add(true, 'Có mồi tươi giàu đạm', 'Côn trùng, trứng giúp chim sung và lông đẹp.');
-    else { add(false, 'Thiếu mồi tươi', `${sp.name} cần côn trùng hoặc trứng mỗi ngày.`); S.vigor -= 10; S.feather -= 4; }
+    else if (S.vigor > 85) add(null, 'Bớt mồi để hạ lửa', 'Chim đang căng lửa: nghỉ mồi tươi một hôm giúp chim không bị quá lửa.');
+    else if (S.day - S.lastProtein >= 3) { add(false, 'Thiếu mồi tươi', `Đã ${S.day - S.lastProtein} ngày chưa có côn trùng hoặc trứng. ${sp.name} cần mồi tươi vài lần mỗi tuần.`); S.vigor -= 8; S.feather -= 3; }
   }
   if (sp.needs.mineral) {
     if (S.day - S.lastMineral >= 7) { add(false, 'Thiếu khoáng', 'Đã một tuần chưa có xương mực hoặc đá khoáng. Vẹt cần canxi thường xuyên.'); S.health -= 4; }
@@ -50,7 +58,7 @@ export function endDay(S, ctx, forced) {
   if (T.clean) {
     if (T.dryClean) add(false, 'Dọn lồng chưa an toàn cho người', 'Quét khô làm bụi phân bay lên. Đeo găng, lau ẩm và rửa tay để phòng bệnh sốt vẹt.');
     else add(true, 'Dọn lồng an toàn', 'Lồng sạch, người dọn cũng được bảo vệ.');
-  } else if (S.cage < 60) add(false, 'Lồng bẩn', 'Nên dọn khay phân mỗi ngày.');
+  } else add(false, S.cage < 60 ? 'Lồng bẩn' : 'Chưa dọn khay phân', 'Nên dọn khay phân mỗi ngày: phân để lâu sinh rận mạt, vi khuẩn.');
 
   if (W.rain) add(null, 'Tắm nắng', 'Trời mưa, không phơi nắng. Giữ lồng nơi khô ráo, kín gió.');
   else if (T.sunGood < sp.sun[0]) { add(false, 'Thiếu nắng sớm', `${sp.name} cần khoảng ${sp.sun[0]}–${sp.sun[1]} phút nắng buổi sáng (trước 9 giờ 30 là tốt nhất).`); S.vigor -= 4; S.feather -= 2; }
@@ -58,10 +66,11 @@ export function endDay(S, ctx, forced) {
   else add(true, 'Tắm nắng sáng đủ', `Khoảng ${Math.round(T.sunGood)} phút nắng tốt.`);
   if (T.heat >= 10) add(false, 'Phơi nắng trưa gắt', 'Nắng 11–15 giờ rất dễ gây sốc nhiệt.');
 
+  const bathGap = isYoung(S) ? Math.max(2, sp.bathGap) : sp.bathGap; // chim non tắm thưa hơn
   if (T.lateBath) add(false, 'Tắm muộn', 'Tắm sau 17 giờ, lông không kịp khô trước đêm.');
   else if (T.baths > 0) add(true, 'Tắm nước đúng giờ', 'Tắm đều giúp sạch lông, ít ký sinh.');
-  else if (S.day - S.lastBath > sp.bathGap) {
-    add(false, 'Lâu chưa tắm', `${sp.name} nên được tắm ${sp.bathGap === 1 ? 'mỗi ngày' : 'ít nhất mỗi ' + sp.bathGap + ' ngày'} khi trời không lạnh.`);
+  else if (S.day - S.lastBath > bathGap && !W.cold) { // trời mưa lạnh thì hoãn tắm là đúng
+    add(false, 'Lâu chưa tắm', `${isYoung(S) ? 'Chim non' : sp.name} nên được tắm ${bathGap === 1 ? 'mỗi ngày' : 'ít nhất mỗi ' + bathGap + ' ngày'} khi trời không lạnh.`);
     S.feather -= 5; S.risk.ran_mat += 20;
   }
 
@@ -72,7 +81,13 @@ export function endDay(S, ctx, forced) {
   if (S.newDays > 0) {
     if (T.talks > 2) { add(false, 'Chim mới bị làm phiền', 'Những ngày đầu nên để chim yên tĩnh, chỉ cho ăn uống và dọn dẹp nhẹ nhàng.'); S.mood -= 8; }
     else add(true, 'Để chim mới làm quen yên tĩnh', 'Đúng cách giúp chim tránh “ngã nước”.');
-  }
+  } else if (S.sick) {
+    if (T.talks <= 1) add(null, 'Để chim bệnh nghỉ ngơi', 'Chim ốm cần yên tĩnh, không luyện giọng, ít làm phiền.');
+  } else if (sp.skill === 'song') { // khớp việc "bond" trong goals.js
+    if (T.talks > 0 || T.tutor > 0) add(true, 'Gần gũi, luyện giọng', 'Trò chuyện, giọng mồi đều đặn giúp chim dạn người, hót hay hơn.');
+    else { add(false, 'Chưa gần gũi chim hôm nay', 'Chim cảnh cần được trò chuyện hoặc nghe giọng mồi mỗi ngày để dạn người, giữ giọng.'); S.mood -= 3; }
+  } else if (T.talks > 0) add(true, 'Trò chuyện, dạy nói', 'Lặp lại đều đặn là cách dạy nói hiệu quả.');
+  else { add(false, 'Chưa trò chuyện với chim', 'Loài biết nói cần được trò chuyện mỗi ngày để dạn người, học nói.'); S.mood -= 3; }
 
   if (S.sick) add(false, 'Chim bệnh chưa được chữa', `${DISEASES[S.sick.type].name}: ${DISEASES[S.sick.type].sign} Đưa đi thú y càng sớm càng tốt.`);
 
@@ -123,14 +138,20 @@ function songGain(S) {
   const T = S.today;
   if (S.sick) return -3;   // ốm thì sa sút giọng
   if (S.molt) return 0;    // thay lông: chim nghỉ hót, giọng đứng yên
-  const tutor = S.newDays > 0 ? 0 : Math.min(T.tutor, 2);
-  return clamp((S.vigor - 40) / 8, -2, 4) + clamp((S.mood - 50) / 10, -1, 2) + clamp(S.trust / 30, 0, 2)
-    + Math.min(T.sang, 8) * 0.5 + tutor * 1.8 + (T.cafe ? 2 : 0);
+  const st = stageOf(S);
+  const tutor = S.newDays > 0 ? 0 : Math.min(T.tutor, 2) - Math.min(T.tutorOff || 0, 2) * 0.5; // mở sai giờ chỉ được nửa tác dụng
+  // Chim non học giọng mồi rất nhanh (giai đoạn nhạy cảm); chim lâu năm giọng đã định, khó đổi
+  const g = clamp((S.vigor - 40) / 8, -2, 4) + clamp((S.mood - 50) / 10, -1, 2) + clamp(S.trust / 30, 0, 2)
+    + Math.min(T.sang, 8) * 0.5 + tutor * 1.8 * st.tutorK + (T.cafe ? 2 : 0);
+  return (g > 0 ? g * st.songK : g) - (S.mix || 0) / 25; // lai giọng kéo giọng xuống
 }
 
 function growSong(S, ctx) {
   const lv = songLevel(S.song);
-  S.song = clamp(S.song + songGain(S));
+  const cap = stageOf(S).songCap;
+  const was = S.song;
+  S.song = Math.min(Math.max(cap, was), clamp(S.song + songGain(S)));
+  if (was < cap && S.song >= cap) ctx.log('tip', `${S.name} còn non nên giọng chưa “định”: chim chuyền cần khoảng một năm, qua mùa sinh sản đầu mới hót trọn câu như chim trưởng thành.`);
   const now = songLevel(S.song);
   if (now > lv) ctx.log('good', `Giọng hót của ${S.name} lên cấp “${SONG_LEVELS[now].name}”: ${SONG_LEVELS[now].desc.toLowerCase()}`);
   else if (now < lv) ctx.log('warn', `Giọng hót của ${S.name} sa sút, chỉ còn “${SONG_LEVELS[now].name}”. Chim ốm, thiếu chăm sóc thì nản hót.`);
@@ -142,13 +163,15 @@ export function startDay(S, ctx) {
   S.today = newToday(); S.pos = S.loc; S.wet = 0;
   S.singUntil = 0; S.sayUntil = 0; // mốc phút của hôm qua, không để chim "hót" hay bóng chữ sót sang sáng nay
   scheduleDay(S, rng);
-  if (S.day === MOLT_START && !S.molt) {
+  const [mStart, mEnd] = moltDays(S);
+  if (S.day === mStart && !S.molt) {
     S.molt = true;
     ctx.log('warn', `${S.name} bắt đầu thay lông (ngoài đời kéo dài 1–2 tháng, thường vào mùa thu). Giai đoạn này chim yếu, hót ít. Tắm nắng sáng, tắm nước đều, dinh dưỡng đủ.${sp.moltAvoid.length ? ' Riêng chào mào nên tránh sâu và chuối.' : ''}`);
   }
-  if (S.day === MOLT_END && S.molt) {
+  if (S.day === mEnd && S.molt) {
     S.molt = false;
     ctx.log(S.feather >= 75 ? 'good' : 'warn', S.feather >= 75 ? 'Thay lông xong! Bộ lông mới óng mượt nhờ chăm đúng cách.' : 'Thay lông xong nhưng lông mới chưa đẹp. Lần sau chú ý tắm, nắng sớm và dinh dưỡng đầy đủ.');
+    if (S.stage === 'chuyen') ctx.log('good', `${S.name} đã khoác bộ lông trưởng thành sau lần thay lông đầu đời. Từ nay trông như chim lớn, dù giọng vẫn còn đang tập.`);
   }
   const W = WEATHER[S.weather];
   ctx.log('info', `Trời sáng. ${W.name} ${W.temp}°C. Mở áo lồng cho chim đón ngày mới.${W.hot ? ' Ngày nóng: chim uống nhiều nước, tránh nắng trưa.' : ''}${W.rain ? ' Trời mưa lạnh: không tắm muộn, giữ lồng kín gió.' : ''}`);

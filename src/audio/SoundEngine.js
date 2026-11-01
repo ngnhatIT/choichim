@@ -1,8 +1,9 @@
 import { SPECIES } from '../data/species.js';
 import { songLevel } from '../data/song.js';
+import { stageOf } from '../data/stages.js';
 import { clamp, hourOf, isNight } from '../core/util.js';
 import { play, impulse } from './synth.js';
-import { compose, call, speechNotes, voiceOf, hash, R } from './songs.js';
+import { compose, call, speechNotes, voiceOf, hash, R, planBout } from './songs.js';
 import { SFX } from './sfx.js';
 import { Ambience } from './ambience.js';
 
@@ -30,7 +31,8 @@ export class SoundEngine {
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', () => {
         if (!this.ctx) return;
-        if (document.hidden) this.ctx.suspend(); else this.ctx.resume().catch(() => {});
+        // Đang nghe chim (treo máy) thì vẫn phát khi chuyển sang tab khác
+        if (document.hidden && !this.relaxOn) this.ctx.suspend(); else this.ctx.resume().catch(() => {});
       });
     }
   }
@@ -161,17 +163,20 @@ export class SoundEngine {
     if (sp.skill === 'talk') { // loài nói không có hiệp hót: tự líu lo khi vui
       if (S.mood > 45 && now >= (this.next.chat ?? 0)) {
         const L = clamp(Math.round((S.mood - 40) / 15), 1, 4);
-        this.bird(compose(S.sp, L, { seed: this.v.seed, dur: (S.sp === 'yenphung' ? rnd(2.5, 6) : rnd(2, 4.5)) * (0.7 + 0.1 * L) }), 0.5);
+        this.bird(compose(S.sp, L, { seed: this.v.seed, dur: (S.sp === 'yenphung' ? rnd(2.5, 6) : rnd(2, 4.5)) * (0.7 + 0.1 * L), young: this.young(S) }), 0.5);
         this.next.chat = this.busy + (S.sp === 'yenphung' ? rnd(4, 12) : rnd(8, 20));
       }
     } else if (due('call', 10, 25)) this.bird(call(S.sp, 'call'));
   }
 
+  /** Độ non của giọng: chim chuyền đang tập hót, giọng vững dần theo luyện tập; chim trưởng thành đã định giọng. */
+  young(S) { return S.stage === 'chuyen' ? Math.min(1, Math.max(0.25, 0.85 - 0.6 * Math.min(1, S.song / stageOf(S).songCap)) + (S.mix || 0) / 200) : 0; } // lai giọng: nghe lộn xộn hơn
+
   boutNow(S) {
     const L = songLevel(S.song);
     let dur = BOUT[L] * rnd(0.85, 1.15);
     if (S.sp === 'chichchoe' && hourOf(S.t) < 8) dur *= 1.25; // chích chòe hót nhiều nhất lúc sáng sớm
-    this.bird(compose(S.sp, L, { seed: this.v.seed, dur }), rnd(1.2, 3));
+    this.bird(compose(S.sp, L, { seed: this.v.seed, dur, young: this.young(S) }), rnd(1.2, 3));
   }
 
   /** Loài nói: đọc câu bằng giọng tiếng Việt của máy nếu có, không thì nhại bằng tiếng rè theo thanh điệu. */
@@ -244,6 +249,85 @@ export class SoundEngine {
       const L = songLevel(S2.song);
       this.bird(L ? compose(S2.sp, L, { seed: this.v.seed, dur: rnd(1.5, 2.5) }) : call(S2.sp, 'call'), 1);
     });
+  }
+
+  /**
+   * Chế độ "Nghe chim" (treo máy): thời gian game dừng, chim hót theo nhịp thật (planBout): từng câu, nghỉ giữa câu,
+   * hết hiệp thì nghỉ lâu, thỉnh thoảng gọi khẽ. Chỉ hót khi chim thật sự hót được (không trùm áo, không ốm,
+   * ban ngày, đủ vui, đủ khỏe); không thì im và `relaxNote` giải thích vì sao.
+   */
+  setRelax(on) {
+    this.relaxOn = !!on;
+    clearTimeout(this.rt);
+    this.plan = null; this.relaxSinging = false; this.relaxNote = '';
+    // Đồng hồ nghe chim: thời gian game dừng nhưng buổi sáng vẫn trôi dần (1 phút mỗi 6 giây thật) để không hót mãi một giờ
+    this.relaxAt = on ? { t: this.S?.t ?? 360, real: Date.now() } : null;
+    if (on) { this.ctx?.resume().catch(() => {}); this.relaxTick(); } else if (this.ctx) this.stop(this.cur, 0.4);
+  }
+
+  /** Giờ (phút trong ngày) của đồng hồ nghe chim. */
+  get relaxClock() {
+    const A = this.relaxAt;
+    if (!A) return this.S?.t ?? 360;
+    const now = Date.now();
+    let dt = (now - A.real) / 1000;
+    A.real = now;
+    // Ban ngày 1 phút game mỗi 6 giây thật; đêm trôi nhanh (11 tiếng chừng 3 phút) rồi sáng hôm sau chim lại hót.
+    // Tính từng giây để lâu không đọc (tab ẩn) cũng không vọt qua giờ sáng.
+    while (dt > 0) {
+      const step = Math.min(1, dt);
+      A.t += step * (isNight(A.t) || A.t >= 18.5 * 60 ? 3.5 : 1 / 6);
+      if (A.t >= 1440) A.t -= 1440;
+      dt -= step;
+    }
+    return A.t;
+  }
+
+  relaxTick() {
+    if (!this.relaxOn) return;
+    const S = this.S, wait = (sec) => { this.rt = setTimeout(() => this.relaxTick(), sec * 1000); };
+    if (!S) { wait(1); return; }
+    if (!this.ready) { this.ctx?.resume().catch(() => {}); wait(1); return; }
+    const t = this.relaxClock, h = hourOf(t);
+    this.amb?.update({ ...S, t });
+    // Cùng điều kiện hót với mô phỏng (simulation.js): chim chỉ hót khi khỏe, no, sung, vui, dạn người, ban ngày
+    const sp = SPECIES[S.sp], talk = sp.skill === 'talk', night = isNight(t) || h >= 18, easy = songLevel(S.song) < 2;
+    const hungry = S.hunger <= 30 || S.water.level <= 0;
+    const why = S.over ? 'Ván đã kết thúc.' : night ? 'Trời tối, chim đã ngủ. Chỉ còn tiếng dế và côn trùng đêm.'
+      : S.covered ? 'Lồng đang trùm áo nên chim im lặng. Mở áo lồng để nghe chim.'
+        : S.sick ? 'Chim đang ốm nên không hót, chỉ thỉnh thoảng kêu yếu.'
+          : hungry ? 'Chim đói hoặc khát nên chỉ kêu đòi ăn uống, không hót. Cho ăn, thay nước rồi nghe tiếp.'
+            : S.newDays > 0 ? 'Chim mới về còn nhát, chưa dám hót. Vài ngày quen nhà chim mới cất tiếng.'
+              : S.health < (talk ? 50 : 70) ? 'Chim còn yếu nên không hót.'
+                : S.mood < (talk ? 45 : easy ? 52 : 58) ? 'Chim chưa vui nên chưa chịu hót. Chăm cho chim vui hơn đã.'
+                  : !talk && S.molt ? 'Chim đang thay lông nên ít hót, chỉ gọi khẽ.'
+                    : !talk && S.vigor <= (easy ? 54 : 62) ? 'Chim đang xuống lửa nên chưa hót. Nắng sớm, mồi tươi vừa phải, ngủ đủ sẽ lên lửa.'
+                      : !talk && S.trust <= (easy ? 10 : 22) ? 'Chim chưa dạn người nên chưa hót khi có người gần.' : '';
+    this.relaxNote = why;
+    if (why) {
+      this.relaxSinging = false; this.plan = null;
+      const kind = S.sick ? 'weak' : hungry ? 'beg' : 'call';
+      if (!S.covered && !night && !S.over && this.ctx.currentTime >= this.busy && Math.random() < (hungry ? 0.5 : 0.2)) this.bird(call(S.sp, kind), 0.5);
+      wait(2); return;
+    }
+    const L = talk ? clamp(Math.round((S.mood - 40) / 15), 1, 4) : songLevel(S.song);
+    if (!talk && h >= 11 && h < 14.5) this.relaxNote = 'Giữa trưa chim ít hót, thường chỉ nghỉ và rỉa lông. Sáng sớm là lúc hót nhiều nhất.';
+    if (!this.plan || this.plan.i >= this.plan.phrases.length) {
+      if (this.plan && !this.plan.rested) { // hết hiệp: nghỉ, giữa chừng gọi khẽ một tiếng như chim thật
+        this.plan.rested = true; this.relaxSinging = false;
+        const rest = this.plan.rest;
+        this.plan.restUntil = Date.now() + rest * 1000;
+        if (!talk && Math.random() < 0.6) setTimeout(() => { if (this.relaxOn && !this.relaxSinging && this.ready && !this.relaxNote) this.bird(call(S.sp, 'call'), 0.5); }, rest * R(Math.random, 0.3, 0.7) * 1000);
+      }
+      // Đang nghỉ: cứ 2 giây xem lại (trời tối, trùm áo... thì dừng ngay, dòng nhắc cập nhật kịp)
+      if (this.plan && Date.now() < this.plan.restUntil) { wait(Math.min(2, (this.plan.restUntil - Date.now()) / 1000)); return; }
+      this.plan = { ...planBout(S.sp, L, h), i: 0 };
+    }
+    const p = this.plan.phrases[this.plan.i++];
+    this.relaxSinging = true;
+    if (S.sp === 'sao' && S.words.length && Math.random() < 0.2) this.bird(speechNotes(S.words[(Math.random() * S.words.length) | 0]), 0); // sáo chen câu đã học
+    else this.bird(compose(S.sp, L, { seed: this.v.seed, dur: p.dur, young: this.young(S) }), 0);
+    wait(this.cur.end - this.ctx.currentTime + p.gap);
   }
 
   /** Nghe thử tiếng hót một loài (màn hình chọn chim, Sổ tay). Trả về hàm dừng. */

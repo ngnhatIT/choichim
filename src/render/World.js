@@ -9,7 +9,8 @@ import { feederAcceptance } from '../core/simulation.js';
 import { Sky } from './Sky.js';
 import { House, Stand, FLOOR_Y } from './House.js';
 import { Cage, CAGE } from './Cage.js';
-import { Bird } from './Bird.js';
+import { Bird, stageModel } from './Bird.js';
+import { adultness, isYoung } from '../data/stages.js';
 import { Life } from './Life.js';
 import { noteSprite, shadowBlob } from './textures.js';
 
@@ -39,9 +40,12 @@ export class World {
     this.reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    // Máy yếu (ít nhân CPU hoặc ít RAM): độ phân giải thấp hơn, bóng thường thay bóng mềm
+    const weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
+    this.maxPr = Math.min(window.devicePixelRatio, weak ? 1.25 : 1.75);
+    renderer.setPixelRatio(this.maxPr);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = weak ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -140,6 +144,25 @@ export class World {
     renderer.setAnimationLoop(() => this.frame());
   }
 
+  /** Khung hình tụt dưới ~40/giây liên tục 3 giây thì hạ độ phân giải từng bậc (không thấp hơn 1). */
+  adapt(raw) {
+    if (document.hidden || raw > 0.5) return; // tab ẩn hoặc vừa quay lại: bỏ qua
+    this.ft = (this.ft ?? 1 / 60) * 0.95 + raw * 0.05;
+    const slow = this.ft > (this.lowFps ? 2 : 1) / 40;
+    this.slowFor = slow ? (this.slowFor || 0) + raw : 0;
+    const pr = this.renderer.getPixelRatio();
+    if (this.slowFor > 3 && pr > 1) {
+      this.renderer.setPixelRatio(Math.max(1, pr - 0.25));
+      this.resize(); this.slowFor = 0;
+    }
+    // Mượt trở lại lâu (sau hộp thoại nặng, tab khác...) thì nâng dần độ phân giải về mức cũ
+    this.fastFor = this.ft < (this.lowFps ? 2 : 1) / 55 ? (this.fastFor || 0) + raw : 0;
+    if (this.fastFor > 10 && pr < this.maxPr) {
+      this.renderer.setPixelRatio(Math.min(this.maxPr, pr + 0.25));
+      this.resize(); this.fastFor = 0;
+    }
+  }
+
   resize() {
     const w = this.container.clientWidth || 1, h = this.container.clientHeight || 1;
     this.renderer.setSize(w, h, false);
@@ -184,8 +207,10 @@ export class World {
     if (v === 'wide') this.flyTo(new THREE.Vector3(0.6, 4.4, 10.5), new THREE.Vector3(-0.3, 1.3, -0.8));
     else {
       // Màn hình dọc thì lùi camera xa hơn để thấy trọn lồng
-      const far = this.camera.aspect < 1 ? 1.6 / Math.max(0.45, this.camera.aspect) : 1;
-      this.flyTo(c.clone().add(new THREE.Vector3(0.28 * far, 0.1, 1.05 * far)), c.clone().add(new THREE.Vector3(0, -0.04, 0)));
+      const tall = this.camera.aspect < 1, far = tall ? 1.15 / Math.max(0.45, this.camera.aspect) : 1;
+      // Màn dọc: thanh trên đè mép trên cảnh, nên nhìn cao hơn một chút để lồng nằm giữa khoảng trống thật
+      const up = tall ? 0.09 : 0;
+      this.flyTo(c.clone().add(new THREE.Vector3(0.28 * far, 0.1 + up, 1.05 * far)), c.clone().add(new THREE.Vector3(0, -0.04 + up, 0)));
     }
   }
 
@@ -198,27 +223,34 @@ export class World {
     this.S = S;
     if (!S) return;
     const sp = SPECIES[S.sp];
-    if (this.speciesKey !== S.sp) {
-      this.speciesKey = S.sp;
-      this.bird.build(sp.model, S.sp);
+    const age = adultness(S.stage, S.day), look = S.sp + (S.stage || '') + Math.round(age * 4);
+    if (this.speciesKey !== look) { // đổi loài, hoặc chim chuyền đang thay dần sang lông trưởng thành
+      this.speciesKey = look;
+      this.bird.build(stageModel(sp.model, age, S.stage === 'gia'), S.sp);
       this.bird.setCage({ perches: this.cage.perches, targets: this.cage.targets, R: CAGE.R });
       this.vs.lastSing = S.singUntil; this.vs.say = S.say; this.vs.boutUntil = 0;
     }
     const c = this.cage;
     c.setFood(S.feeder.type ? STAPLES[S.feeder.type].color : null, S.feeder.amt / 100);
     c.setWater(S.water.level / 100, S.water.clean / 100);
-    c.setDirt(S.cage);
+    c.setDirt(S.cage, S.sick?.type);
     c.setFresh(S.fresh ? FOODS[S.fresh.f].mesh : null, S.fresh?.spoiled);
     c.setCovered(S.covered);
     c.setMolt(S.molt);
   }
 
   frame() {
-    const dt = Math.min(0.05, this.clock.getDelta());
+    if (this.lowFps && (this.skipFrame = !this.skipFrame)) return; // chế độ nghe chim: vẽ cách một khung
+    const raw = this.clock.getDelta(), dt = Math.min(0.05, raw);
+    this.adapt(raw);
+    // Nghe chim: bóng đổ cập nhật 1/3 số khung (chim đứng hót ít di chuyển)
+    const sm = this.renderer.shadowMap;
+    sm.autoUpdate = !this.lowFps;
+    if (this.lowFps && (this.shadowTick = ((this.shadowTick || 0) + 1) % 3) === 0) sm.needsUpdate = true;
     this.now += dt;
     const S = this.S;
     const W = S ? WEATHER[S.weather] : WEATHER.mat;
-    const hour = S ? S.t / 60 : 8;
+    const hour = S ? this.tNow(S) / 60 : 8;
     this.gust = Math.max(0, this.gust - dt / 20);
     const wind = Math.min(1.4, (W.cold || W.rain ? 0.8 : 0.15) + this.gust);
     this.sky.update(hour, W, dt, wind);
@@ -271,10 +303,12 @@ export class World {
 
   /** Suy ra cờ hành vi của chim từ trạng thái game (chỉ đọc). */
   birdFlags(S, W, dt) {
-    const sp = SPECIES[S.sp], f = this.flags, h = S.t / 60;
-    const night = isNight(S.t);
-    f.sleep = night && S.covered;
-    f.drowsy = night && !S.covered;
+    const rc = this.clockFn?.(), t = rc ?? S.t; // đang nghe chim: theo đồng hồ nghe
+    const sp = SPECIES[S.sp], f = this.flags, h = t / 60;
+    // Nghe chim: chim lên cầu ngủ từ 18 giờ như SoundEngine.relaxTick; chơi thường thì theo giờ đêm của game
+    const night = rc != null ? h >= 18 || h < 5.5 : isNight(t);
+    f.sleep = night && (S.covered || rc != null);
+    f.drowsy = night && !f.sleep;
     f.covered = S.covered;
     f.sick = !!S.sick;
     f.itch = S.sick?.type === 'ran_mat';
@@ -285,11 +319,16 @@ export class World {
     f.fluff = f.sick || f.wet || (W.cold && !S.covered) || f.drowsy;
     f.eat = S.hunger < 85 && S.feeder.amt > 0 && feederAcceptance(S, sp) > 0;
     f.hungry = S.hunger < 20;
+    f.peckish = S.hunger < 45;
     f.water = S.water.level > 4;
     f.fresh = !!S.fresh;
     f.hot = (S.pos === 'san' && h >= 11 && h < 15) || S.sick?.type === 'say_nang';
     f.nervous = S.newDays > 0 || S.mood < 35 || S.sick?.type === 'nga_nuoc';
     f.active = S.covered || f.sick ? 0 : clamp01((S.mood - 35) / 50);
+    f.young = isYoung(S);           // chim non: đói thì rung cánh xin ăn
+    f.overFire = !S.covered && S.vigor > 90; // quá lửa: nhảy loạn, đập cánh
+    f.lowFire = !S.covered && !f.sick && S.vigor < 40; // xuống lửa: thu mình, xù nhẹ, cụp mào
+    f.ragged = S.feather < 50;                // lông xấu: xơ, hay rỉa
     f.excited = S.mood > 70;
     f.trust = S.trust;
     f.camNear = this.view === 'close';
@@ -311,7 +350,7 @@ export class World {
       V.boutStart = now; V.boutUntil = now + rand(5, 7.5); V.real = false;
     }
     V.lastSing = S.singUntil;
-    let sing = !quiet && sp.skill === 'song' && (S.t < S.singUntil || now < V.boutUntil);
+    let sing = !quiet && sp.skill === 'song' && (S.t < S.singUntil || now < V.boutUntil || !!this.singing?.()); // singing: chế độ nghe chim
     if (sing && raw > 0.03) { V.real = true; V.boutUntil = Math.max(V.boutUntil, now + 0.6); }
     // Loài nói: câu mới → líu lo một lúc
     if (S.say !== V.say) { if (S.say && S.t < S.sayUntil) V.chatUntil = now + 1.8; V.say = S.say; }
@@ -476,7 +515,7 @@ export class World {
   }
 
   updateSmoke(dt, S) {
-    const h = S.t / 60;
+    const h = this.tNow(S) / 60;
     const incense = h >= 17 && h < 19.5;
     const cooking = (h >= 10.6 && h < 11.6) || (h >= 17 && h < 18.5);
     const sources = [];
@@ -525,6 +564,24 @@ export class World {
   }
 
   /** Tọa độ màn hình của đầu chim (cho bong bóng lời). */
+  /** fn() -> phút trong ngày của đồng hồ nghe chim, hoặc null khi đang chơi bình thường (dùng giờ game). */
+  setClock(fn) { this.clockFn = fn; }
+  tNow(S) { return this.clockFn?.() ?? S.t; }
+
+  /** fn() -> true khi chim đang trong hiệp hót do SoundEngine tự lên lịch (chế độ nghe chim). */
+  setSinging(fn) { this.singing = fn; }
+
+  /** Vị trí trên màn hình của vật chạm được trong lồng ('staple' | 'water' | 'clean' | 'cover' | 'look'), null nếu đang khuất. */
+  pickScreen(id) {
+    if (id === 'look') { const p = this.headScreen(); return p.visible ? p : null; }
+    const o = this.cage.picks.find((m) => m.userData.pick === id && visibleChain(m));
+    if (!o) return null;
+    const v = o.getWorldPosition(new THREE.Vector3()).project(this.camera);
+    const r = this.renderer.domElement.getBoundingClientRect();
+    if (v.z > 1 || Math.abs(v.x) > 1 || Math.abs(v.y) > 1) return null;
+    return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height, visible: true };
+  }
+
   headScreen() {
     const v = this.bird.headWorld(new THREE.Vector3());
     v.y += 0.06;

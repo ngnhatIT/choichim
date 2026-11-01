@@ -170,7 +170,12 @@ export class Cage {
     this.waterFill.material.color.copy(c);
   }
 
-  setDirt(cageClean) { this.drops.count = Math.max(0, Math.min(40, Math.round((100 - cageClean) / 2.4))); }
+  /** Phân trên khay: nhiều theo độ bẩn; màu báo sức khỏe (khỏe: trắng đen; tiêu chảy: lỏng xanh; ốm: mất phần trắng, ngả vàng). */
+  setDirt(cageClean, sick) {
+    this.drops.count = Math.max(0, Math.min(40, Math.round((100 - cageClean) / 2.4)));
+    const c = sick === 'tieu_chay' ? '#9FAE6A' : sick ? '#C9B866' : '#EDEBE3';
+    if (c !== this.dropColor) { this.dropColor = c; this.drops.material.color.set(c); }
+  }
 
   setFresh(spec, spoiled) {
     const key = spec ? spec.shape + spec.color + spoiled : '';

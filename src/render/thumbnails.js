@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { SPECIES } from '../data/species.js';
-import { Bird } from './Bird.js';
+import { Bird, stageModel } from './Bird.js';
 
 const W = 184, H = 144;
 
-/** Chụp ảnh 3D của từng loài chim (nền trong suốt, góc 3/4, đậu trên cành) cho màn hình chọn chim. */
+/** Chụp ảnh 3D của từng loài chim (nền trong suốt, góc 3/4, đậu trên cành): `loài` lông trưởng thành, `loài:non` lông non, `loài:gia` chim lâu năm. */
 export function renderBirdThumbnails() {
   const out = {};
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
@@ -31,9 +31,9 @@ export function renderBirdThumbnails() {
 
   const box = new THREE.Box3(), size = new THREE.Vector3(), center = new THREE.Vector3();
   const pose = { hYaw: 0.45, hPitch: 0.08, hRoll: 0.08, crest: 1, eyes: 1 };
-  for (const [k, sp] of Object.entries(SPECIES)) {
+  for (const [k, model] of Object.entries(SPECIES).flatMap(([k, sp]) => [[k, sp.model], [k + ':non', stageModel(sp.model, 0)], [k + ':gia', stageModel(sp.model, 1, true)]])) {
     const bird = new Bird();
-    bird.build(sp.model, k);
+    bird.build(model, k.split(':')[0]);
     Object.assign(bird.pose, pose);
     bird.applyPose(bird.pose, bird.osc);
     bird.group.rotation.y = -0.55; // quay 3/4 về phía máy ảnh

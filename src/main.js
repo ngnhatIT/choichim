@@ -16,6 +16,8 @@ const world = new World(document.getElementById('scene'), {
   onPick: (id) => { if (!modals.isOpen() && PICK_TO_ACTION[id]) hud.trigger(PICK_TO_ACTION[id]); },
 });
 world.setVoice(() => audio.voiceLevel());
+world.setSinging(() => audio.relaxSinging);
+world.setClock(() => (audio.relaxOn ? audio.relaxClock : null));
 const hud = new Hud(game, world, modals, audio);
 let thumbs = null;
 
@@ -39,7 +41,7 @@ function showStart() {
   if (!thumbs) thumbs = renderBirdThumbnails();
   modals.start({
     saved: loadGame(), thumbs,
-    onNew: (sp, name) => { game.newGame(sp, name); world.setView('close'); saveGame(game.S); },
+    onNew: (sp, name, stage) => { game.newGame(sp, name, stage); world.setView('close'); saveGame(game.S); },
     onContinue: () => {
       game.load(loadGame());
       world.setView('close');

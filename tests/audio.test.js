@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import * as SONGS_SESSION from '../src/audio/songs.js';
 import { compose, call, speechNotes, voiceOf, SONGS, WILD } from '../src/audio/songs.js';
 import { SFX } from '../src/audio/sfx.js';
 import { createRng } from '../src/core/rng.js';
@@ -70,5 +71,54 @@ describe('Âm thanh - ngữ pháp tiếng hót', () => {
     expect(valid(speechNotes('Ăn cơm chưa', r))).toBe(true);
     for (const f of Object.values(WILD)) expect(valid(f(r))).toBe(true);
     for (const f of Object.values(SFX)) expect(valid(f(r))).toBe(true);
+  });
+});
+
+describe('Âm thanh - nhịp hót khi ngồi nghe', () => {
+  it('hiệp hót có câu, có nghỉ; sáng sớm dày hơn trưa; cấp cao hót dài hơn', () => {
+    const { planBout, SESSION } = SONGS_SESSION;
+    const avg = (f) => { let s = 0; for (let i = 0; i < 200; i++) s += f(createRng(i + 1)); return s / 200; };
+    for (const sp of Object.keys(SESSION)) {
+      const b = planBout(sp, 4, 7, createRng(5));
+      expect(b.phrases.length).toBeGreaterThanOrEqual(2);
+      expect(b.phrases.every((p) => p.dur > 0.4 && p.gap > 0.5)).toBe(true);
+      expect(b.rest).toBeGreaterThan(10);
+      const sing = (L, h) => avg((r) => { const x = planBout(sp, L, h, r); return x.phrases.reduce((a, p) => a + p.dur, 0); });
+      const share = (L, h) => avg((r) => { const x = planBout(sp, L, h, r); const s = x.phrases.reduce((a, p) => a + p.dur, 0); return s / (s + x.phrases.reduce((a, p) => a + p.gap, 0) + x.rest); });
+      expect(sing(4, 7)).toBeGreaterThan(sing(1, 7));
+      expect(share(4, 7)).toBeGreaterThan(share(4, 12));
+      expect(share(4, 7)).toBeLessThan(SONGS[sp].talk ? 0.75 : 0.6); // chim hót không hót liên tục; yến phụng líu lo được lâu hơn
+    }
+  });
+});
+
+describe('Âm thanh - giọng chim non', () => {
+  it('giọng non: vẫn hợp lệ, nhỏ hơn, cao độ chưa vững so với giọng đã định', () => {
+    for (const sp of Object.keys(SONGS)) {
+      const adult = compose(sp, 2, { seed: 3, rng: createRng(9), dur: 4 });
+      const young = compose(sp, 2, { seed: 3, rng: createRng(9), dur: 4, young: 0.85 });
+      expect(valid(young)).toBe(true);
+      const loud = (ns) => ns.reduce((a, n) => a + (n.g ?? 1), 0) / ns.length;
+      expect(loud(young)).toBeLessThan(loud(adult));
+    }
+  });
+});
+
+describe('Âm thanh - đồng hồ nghe chim', () => {
+  it('ban ngày trôi chậm, đêm trôi nhanh rồi sáng lại', async () => {
+    const { vi } = await import('vitest');
+    const { SoundEngine } = await import('../src/audio/SoundEngine.js');
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const a = new SoundEngine();
+    a.relaxAt = { t: 7 * 60, real: Date.now() };
+    vi.setSystemTime(60_000); // 1 phút thật ban ngày = 10 phút game
+    expect(a.relaxClock).toBeCloseTo(7 * 60 + 10, 0);
+    a.relaxAt = { t: 19 * 60, real: Date.now() };
+    vi.setSystemTime(60_000 + 200_000); // 200 giây thật ban đêm: qua nửa đêm, gần sáng
+    const t = a.relaxClock;
+    expect(t).toBeLessThan(6 * 60);
+    expect(t).toBeGreaterThan(4 * 60);
+    vi.useRealTimers();
   });
 });

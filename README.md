@@ -28,10 +28,12 @@ Mở trang với `#debug` (ví dụ `http://localhost:5173/#debug`) để truy c
 - Chấm điểm an toàn cho người nuôi (phòng bệnh sốt vẹt khi dọn lồng).
 - Tiếng hót tổng hợp bằng Web Audio, không dùng file ghi âm: mỗi loài một "ngữ pháp" tiếng hót riêng theo cách hót thật, mỗi con một giọng hơi khác, hay hơn khi lên cấp; có tiếng gọi khi đói, hoảng, ốm; loài nói đọc câu đã học (giọng đọc tiếng Việt của máy nếu có); âm thanh mưa, gió, ve sầu, dế; tiếng thao tác. Nghe thử từng loài ở màn hình chọn chim và Sổ tay.
 - Cảnh 3D thủ tục, không dùng file model ngoài: chim có lông tơ nhiều lớp (shell) mềm như lông thật, viền sáng ở mép dáng, mắt to long lanh hai đốm sáng, mỏ trơn, đuôi có khối; hoạt ảnh nhảy cầu, hót, ngủ, xù lông, rũ nước; mặt trời chạy theo giờ, bóng đổ, mưa, đèn ban đêm.
+- Chọn tuổi chim khi đón về: chim chuyền (dạn người, học giọng nhanh, yếu, lông non đổi sang lông trưởng thành qua mùa thay lông), trưởng thành, lâu năm (giọng đã định). Giọng chim non nghe non thật.
+- Nghe chim khi treo máy (phím L, hoặc tự bật sau 2 phút không thao tác): thời gian dừng, chim hót theo nhịp thật, vẫn phát khi chuyển tab.
 - Bong bóng nhu cầu nổi trên đầu chim (máng sắp hết, nước bẩn, lồng bẩn, chim ốm, tối chưa trùm áo); chạm vào là làm luôn. Chế độ "Ngắm chim" ẩn các bảng để ngắm cảnh.
 - Chạm vào cóng nước, máng ăn, khay lồng, áo lồng hoặc con chim trong cảnh 3D để thao tác nhanh.
 - Giao diện phong cách Việt (giấy dó, tre, sơn mài, chàm), biểu tượng SVG, thông báo nổi, biểu đồ tổng kết. Desktop có bảng nổi hai bên, điện thoại có bảng tab phía dưới. Hỗ trợ chế độ sáng tối, giảm chuyển động.
-- Phím tắt: 1–0 các việc chính, Q quan sát, Y thú y, C chờ, N ngủ, phím cách tạm dừng, M âm thanh, V góc nhìn, H ngắm chim (ẩn bảng), S Sổ tay.
+- Phím tắt: 1–0 các việc chính, Q quan sát, Y thú y, C chờ, N ngủ, phím cách tạm dừng, M âm thanh, V góc nhìn, H ngắm chim (ẩn bảng), L nghe chim, S Sổ tay.
 - Tự lưu tiến trình vào localStorage.
 
 ## Kiến trúc

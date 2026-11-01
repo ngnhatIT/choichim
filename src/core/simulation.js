@@ -3,6 +3,7 @@ import { FOODS } from '../data/foods.js';
 import { WEATHER } from '../data/weather.js';
 import { songLevel } from '../data/song.js';
 import { MIX_DAYS } from '../config.js';
+import { stageOf } from '../data/stages.js';
 import { clamp, hourOf } from './util.js';
 
 /** Mức chấp nhận thức ăn đang có trong máng (tính cả giai đoạn trộn dần). */
@@ -33,9 +34,10 @@ export function stepMinute(S, ctx) {
   const h = hourOf(S.t);
   const T = S.today;
   const inSun = S.pos === 'san';
+  const st = stageOf(S);
 
   // Ăn uống
-  S.hunger -= sp.metab * (S.sick ? 0.7 : 1);
+  S.hunger -= sp.metab * st.metabK * (S.sick ? 0.7 : 1); // chim non đang lớn đói nhanh hơn
   const acc = feederAcceptance(S, sp);
   if (S.hunger < 85 && S.feeder.amt > 0 && acc > 0) {
     const r = S.sick ? 0.5 : 1;
@@ -102,18 +104,24 @@ export function stepMinute(S, ctx) {
   if (S.sick) {
     S.health -= DISEASES[S.sick.type].dmg; S.mood -= 0.03; S.vigor -= 0.03;
   }
-  if (S.molt) S.vigor -= 0.008;
-  else if (!S.sick && S.health > 70 && S.mood > 55 && S.hunger > 40) S.vigor += 0.01;
+  if (S.molt) S.vigor -= 0.008 / st.featherMolt; // chim lâu năm thay lông mệt hơn
+  else if (!S.sick && S.health > 70 && S.mood > 55 && S.hunger > 40) S.vigor += 0.01 * st.vigorK * (S.vigor > 80 ? 0.25 : 1); // gần đỉnh lên chậm: không ép thì lửa không tự vọt
+  // Quá lửa (ép mồi, giọng mồi dồn dập): chim nhảy loạn lồng, căng thẳng, lông mới dễ xoắn
+  if (S.vigor > 90) {
+    S.mood -= 0.01; S.feather -= 0.003;
+    if (!T.overFire) { T.overFire = true; ctx.log('warn', `${S.name} đang quá lửa: nhảy loạn lồng, đập cánh, hót gắt. Nên bớt mồi tươi và giọng mồi vài hôm, cho tắm để hạ lửa.`); }
+  }
 
   // Nguy cơ giảm dần theo thời gian, vượt ngưỡng thì phát bệnh
   for (const k of RISK_KEYS) S.risk[k] *= 0.999;
   if (!S.sick) {
-    for (const k of RISK_KEYS) if (S.risk[k] >= 100) { getSick(S, ctx, k); break; }
+    // Chim non, chim già sức đề kháng kém: phát bệnh ở ngưỡng nguy cơ thấp hơn (chim non đặc biệt sợ lạnh)
+    for (const k of RISK_KEYS) if (S.risk[k] * st.riskK * (k === 'cam_lanh' ? st.coldK : 1) >= 100) { getSick(S, ctx, k); break; }
   }
 
   // Hót: chỉ khi khỏe, sung, vui, dạn người. Giọng càng lên cấp hót càng thường, hiệp càng dài;
   // sáng sớm (6–9 giờ) hót nhiều nhất. Chim mới tập hót (cấp 0–1) dễ cất tiếng hơn một chút.
-  if (sp.skill === 'song' && S.t >= S.singUntil && !S.sick && !S.molt && !S.covered && h >= 6 && h < 18) {
+  if (sp.skill === 'song' && S.t >= S.singUntil && !S.sick && !S.molt && !S.covered && h >= 6 && h < 18 && S.hunger > 30 && S.water.level > 0 && S.newDays === 0) {
     const lv = songLevel(S.song);
     const easy = lv < 2;
     if (S.vigor > (easy ? 54 : 62) && S.mood > (easy ? 52 : 58) && S.health > 70 && S.trust > (easy ? 10 : 22) &&

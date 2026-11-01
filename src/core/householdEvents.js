@@ -1,8 +1,8 @@
 import { WEATHER } from '../data/weather.js';
 import { SPECIES } from '../data/species.js';
 import { SONG_LEVELS, songLevel } from '../data/song.js';
-import { MOLT_END } from '../config.js';
 import { ACTIONS } from './actions.js';
+import { addMix, moltDays } from '../data/stages.js';
 
 const skill = (S) => SPECIES[S.sp].skill;
 
@@ -114,6 +114,7 @@ export const HOUSEHOLD_EVENTS = [
             ctx.log('bad', 'Chim mới về, đang thay lông hoặc đang bệnh không nên mang đi đâu: di chuyển và chim lạ gây căng thẳng, dễ lây bệnh.');
           } else {
             S.mood += 6; S.vigor += 6; S.risk.tieu_chay += 15; S.risk.cam_lanh += 10; S.today.cafe = true;
+            if (addMix(S, ctx.sp, 10, ctx, 'nghe lẫn đủ con hót hay hót dở ở quán')) ctx.log('tip', 'Chim tơ đi cà phê chim dễ học lẫn giọng con hót dở. Người chơi chim thường chỉ cho chim non nghe một giọng mồi chuẩn.');
             ctx.log('info', 'Nghe chim khác hót giúp chim sung hơn, nhưng tiếp xúc nhiều chim lạ cũng tăng nguy cơ lây bệnh. Ở TP Huế, kiểm lâm yêu cầu khách mang chim tới quán phải chứng minh được nguồn gốc hợp pháp.');
           }
           return 120;
@@ -178,6 +179,7 @@ export const HOUSEHOLD_EVENTS = [
         label: 'Kệ, hát một lát rồi thôi', apply(S, ctx) {
           S.mood -= 12; S.vigor -= 4; if (S.newDays > 0) S.risk.nga_nuoc += 30;
           ctx.log('warn', 'Loa ầm ĩ đến khuya, chim giật mình đập cánh, ngủ không yên. Thiếu ngủ nhiều đêm chim sẽ mệt, kém hót.');
+          addMix(S, ctx.sp, 22, ctx, 'phải nghe loa karaoke ầm ĩ hàng giờ');
           return 0;
         },
       },
@@ -274,7 +276,7 @@ export const HOUSEHOLD_EVENTS = [
   },
   {
     id: 'thi', from: 7 * 60, to: 9 * 60, chance: 0.35,
-    when: (S) => skill(S) === 'song' && S.day >= MOLT_END && !S.covered && !S.contest && !S.today.cafe,
+    when: (S) => skill(S) === 'song' && S.day >= moltDays(S)[1] && !S.covered && !S.contest && !S.today.cafe,
     title: 'Hội thi chim hót',
     text: (S) => `Câu lạc bộ chim cảnh trong phường tổ chức hội thi chim hót sáng nay. Mọi người rủ mang ${S.name} đi thi.`,
     choices: [

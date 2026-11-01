@@ -1,6 +1,7 @@
 import { SPECIES } from '../data/species.js';
-import { FORCE_SLEEP, MOLT_END, TOTAL_DAYS } from '../config.js';
+import { FORCE_SLEEP, TOTAL_DAYS } from '../config.js';
 import { EventBus } from './EventBus.js';
+import { moltDays } from '../data/stages.js';
 import { createRng } from './rng.js';
 import { createState, migrateState } from './state.js';
 import { ACHIEVEMENTS, earnedAchievements, readAchievements, saveAchievements } from './achievements.js';
@@ -48,8 +49,8 @@ export class Game {
     this.bus.emit('log', entry);
   }
 
-  newGame(sp, name) {
-    this.S = createState({ sp, name });
+  newGame(sp, name, stage = 'truong') {
+    this.S = createState({ sp, name, stage });
     this.pending = null;
     scheduleDay(this.S, this.rng);
     this.log('info', `${name} vừa về nhà. Lồng đang trùm áo để chim bớt sợ. Việc đầu tiên: cho thức ăn chính vào máng và thay nước sạch.`);
@@ -94,7 +95,11 @@ export class Game {
   act(id, payload = {}) {
     const why = this.blocked(id);
     if (why) { this.log('warn', why); this.bus.emit('change'); return false; }
-    if (id === 'sleep') { this.bus.emit('act', { id, payload }); this.finishDay(false); return true; }
+    if (id === 'sleep') {
+      const S = this.S;
+      if (!S.covered) { S.covered = true; S.pos = S.loc; this.log('info', 'Đã mang lồng về chỗ treo và trùm áo cho chim ngủ.'); }
+      this.bus.emit('act', { id, payload }); this.finishDay(false); return true;
+    }
     const mins = ACTIONS[id].run(this.S, this.ctx, payload) || 0;
     this.bus.emit('act', { id, payload });
     if (this.S.health <= 0) { this.gameOver(); return true; }
@@ -135,7 +140,7 @@ export class Game {
     } else {
       this.pending = null;
       startDay(this.S, this.ctx);
-      this.unlock(earnedAchievements(this.S, this.sp, { moltEnded: this.S.day === MOLT_END }));
+      this.unlock(earnedAchievements(this.S, this.sp, { moltEnded: this.S.day === moltDays(this.S)[1] }));
     }
     this.bus.emit('change');
   }

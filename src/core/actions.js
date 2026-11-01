@@ -3,6 +3,8 @@ import { FOODS, STAPLES } from '../data/foods.js';
 import { LOCATIONS } from '../data/locations.js';
 import { WEATHER } from '../data/weather.js';
 import { MIX_DAYS, SLEEP_FROM } from '../config.js';
+import { stageOf, isYoung } from '../data/stages.js';
+import { fireBand } from '../data/song.js';
 import { clamp, hourOf, isNight } from './util.js';
 
 /**
@@ -45,7 +47,7 @@ export const ACTIONS = {
       const full = S.hunger > 95;
 
       if (v === -3) {
-        S.sick = { type: 'ngo_doc', since: S.t }; S.sickCount++;
+        if (!S.sick) { S.sick = { type: 'ngo_doc', since: S.t }; S.sickCount++; } // đang ốm thì giữ bệnh cũ để thú y vẫn chữa đúng, ngộ độc trừ máu ngay
         S.health -= 25; T.bad.push(F.name);
         ctx.log('bad', `${F.name}: ${note} ${S.name} có dấu hiệu ngộ độc, cần đưa đi thú y ngay!`);
         return 5;
@@ -57,12 +59,13 @@ export const ACTIONS = {
         S.hunger += F.fill; S.mood += v === 2 ? 6 : 3;
         if (v === 2) { S.vigor += 2; S.trust += 1; }
         if (F.cat === 'fruit') T.fresh++;
-        if (F.cat === 'protein') T.protein++;
+        if (F.cat === 'protein' && !(food === 'sauquy' && isYoung(S))) { T.protein++; S.lastProtein = S.day; } // sâu quy không tính là mồi mềm cho chim non
         ctx.log('good', `${F.name}: ${note}`);
       }
       if (F.cat === 'mineral' && v > 0) { S.lastMineral = S.day; T.mineral = true; }
       if (food === 'sauquy') {
         T.sauquy++;
+        if (isYoung(S)) { S.feather -= 2; ctx.log('warn', 'Sâu quy vỏ cứng, khó tiêu, không dành cho chim non. Chim chuyền nên ăn lòng đỏ trứng hoặc mồi nhỏ, mềm.'); }
         if (T.sauquy > 1) { S.feather -= 4; ctx.log('warn', 'Sâu quy hôm nay đã quá nhiều. Ăn nhiều sâu quy dễ làm lông khô, xoắn.'); }
       }
       if (full) ctx.log('info', 'Chim đang no, phần lớn đồ ăn sẽ bị bỏ thừa trong lồng.');
@@ -106,6 +109,7 @@ export const ACTIONS = {
       const { sp } = ctx;
       const h = hourOf(S.t);
       const W = WEATHER[S.weather];
+      const prevBath = S.lastBath;
       S.today.baths++; S.lastBath = S.day; S.wet = 40; S.bathFx = S.t + 10; S.feather += 3; S.cage -= 4;
       let msg = 'Đã cho chim sang lồng tắm.';
       let type = 'good';
@@ -113,9 +117,12 @@ export const ACTIONS = {
       else S.mood += 6;
       if (h >= 17) { S.today.lateBath = true; S.risk.cam_lanh += 35; type = 'bad'; msg += ' Tắm chiều muộn rất dễ khiến chim nhiễm lạnh vì lông không kịp khô.'; }
       else if (h < 7) { S.risk.cam_lanh += 10; type = 'warn'; msg += ' Sáng sớm nước còn lạnh, nên đợi nắng lên một chút.'; }
+      else if (isYoung(S) && prevBath && S.day - prevBath < 2 && S.today.baths === 1) { S.risk.cam_lanh += 6; type = 'warn'; msg += ' Chim non mới tắm hôm qua: nên cách 2 ngày một lần, tắm dày dễ nhiễm lạnh.'; }
+      else if (isYoung(S) && h < 12) { S.risk.cam_lanh += 8; type = 'warn'; msg += ' Chim non sợ lạnh: nên tắm sau 12 giờ khi trời đã ấm, cách 2 ngày một lần.'; }
       if (W.cold) { S.risk.cam_lanh += 15; if (type !== 'bad') type = 'warn'; msg += ' Trời lạnh: chỉ nên tắm nhanh và hong khô kỹ, hoặc bỏ qua hôm nay.'; }
       if (S.today.baths > sp.maxBath) { S.mood -= 4; type = 'warn'; msg += ' Một ngày tắm một lần là đủ.'; }
       if (S.molt) msg += ' Tắm đều giúp lông cũ rụng nhanh, lông mới mọc mượt.';
+      if (S.vigor > 80) { S.vigor -= 4; msg += ' Tắm cũng giúp chim đang căng lửa hạ bớt.'; }
       if (type === 'good') msg += ' Sau khi tắm, để chim hong khô ở chỗ thoáng hoặc nắng nhẹ.';
       ctx.log(type, msg);
       return 10;
@@ -186,7 +193,7 @@ export const ACTIONS = {
         m = S.molt ? 'Đã trò chuyện nhẹ nhàng. Mùa thay lông không nên luyện giọng nặng.'
           : 'Đã trò chuyện nhẹ nhàng. Chim dạn người hơn; muốn luyện giọng hót, hãy cho nghe giọng mồi.';
       } else if (S.trust >= 35 && S.mood > 50) {
-        S.talkProg += S.sp === 'sao' ? 14 : 11;
+        S.talkProg += (S.sp === 'sao' ? 14 : 11) * stageOf(S).talkK; // chim non bắt chước nhanh nhất
         if (S.talkProg >= 100 && S.words.length < sp.words.length) {
           S.talkProg = 0;
           const w = sp.words[S.words.length];
@@ -223,8 +230,11 @@ export const ACTIONS = {
         S.mood -= 2;
         ctx.log('warn', 'Đang thay lông: chim yếu, ít hót, luyện giọng lúc này không có tác dụng mà còn làm chim mệt. Nên cho nghỉ đến khi thay lông xong.');
       } else {
-        S.vigor += 1.5; S.mood += 1;
-        ctx.log('good', `Đã mở giọng mồi (tiếng một con ${sp.short} hót hay) cho ${S.name} nghe chừng 20 phút. Chim chăm chú lắng nghe; nghe đều mỗi ngày, giọng sẽ tròn và dài hơn.`);
+        const h = hourOf(S.t), good = (h >= 6 && h < 7.5) || (h >= 15 && h < 16.5);
+        S.vigor += good ? 1.5 : 0.8; S.mood += 1;
+        if (S.stage === 'chuyen' && S.mix > 0) S.mix = Math.max(0, S.mix - 4); // nghe giọng chuẩn đều đặn giúp chim tơ bớt lai
+        if (!good) T.tutorOff = (T.tutorOff || 0) + 1;
+        ctx.log(good ? 'good' : 'tip', `Đã mở giọng mồi (tiếng một con ${sp.short} hót hay) cho ${S.name} nghe chừng 20 phút, loa đặt cách lồng 2–3 m.${good ? ' Đúng giờ chim hay hót nên chim chăm chú lắng nghe; nghe đều mỗi ngày, giọng sẽ tròn và dài hơn.' : ' Người chơi chim thường mở vào sáng sớm (6:00–7:30) hoặc chiều mát (15:00–16:30), lúc chim hăng hót nhất; giờ khác chim nghe kém chú ý hơn.'}`);
       }
       return 20;
     },
@@ -267,11 +277,16 @@ export function observe(S, sp) {
   } else out.push('Máng trống.');
   out.push(S.water.clean < 40 ? 'Nước trong cóng đục, có cặn.' : S.water.level < 20 ? 'Cóng nước gần cạn.' : 'Nước trong.');
   if (S.sick?.type === 'tieu_chay') out.push('Phân lỏng, nhiều nước.');
+  else if (S.sick) out.push('Phân ít, phần trắng ngả vàng hoặc xanh: dấu hiệu chim ốm, ăn kém.');
   else out.push(S.cage < 40 ? 'Khay phân đầy, có mùi.' : 'Phân khô, có phần trắng và phần đen: tiêu hóa tốt.');
   if (S.molt) out.push('Đang thay lông: nhiều ống lông mới, lông cũ rụng dưới khay.');
   else if (S.sick?.type === 'ran_mat') out.push('Lông xơ, chim rỉa lông liên tục.');
   else out.push(S.feather > 75 ? 'Lông mượt, ôm sát thân.' : S.feather > 50 ? 'Lông hơi xơ.' : 'Lông xơ xác, kém bóng.');
-  out.push(S.sick ? 'Mắt lim dim, chim đứng xù lông.' : 'Mắt tròn, sáng.');
+  out.push(S.sick ? 'Mắt lim dim, chim đứng xù lông, có lúc ngủ cả hai chân.' : 'Mắt tròn, sáng.');
+  if (S.sick && ['cam_lanh', 'khi_doc', 'say_nang'].includes(S.sick.type)) out.push('Đứng yên mà đuôi vẫn nhấp theo từng nhịp thở: chim đang khó thở.');
+  if (!S.sick && sp.skill === 'song') { const F = fireBand(S.vigor, sp); out.push(`Độ lửa: ${F.name.toLowerCase()}. ${F.sign}`); }
+  if (S.mix >= 20) out.push('Giọng có lẫn tiếng tạp: chim non đang "lai giọng". Cho nghe giọng mồi chuẩn, giữ chỗ yên tĩnh.');
+  if (sp.skill === 'song' && S.stage === 'chuyen') out.push('Chim non đang tập giọng: hay líu ríu nhỏ trong cổ. Giọng mồi nên mở vừa phải, tránh để chim nghe tạp âm, chim hót dở kẻo "lai giọng".');
   out.push(S.trust > 60 ? 'Chim dạn, đến gần khi bạn lại gần lồng.' : S.trust > 30 ? 'Chim đã bớt sợ người.' : 'Chim còn nhát, hay nép vào góc lồng.');
   const r = S.risk;
   if (r.tieu_chay > 40) out.push('Cảnh báo: vệ sinh thức ăn, nước uống đang kém, dễ sinh bệnh đường ruột.');
@@ -294,6 +309,8 @@ export function describeSigns(S, sp) {
   if (S.t < S.singUntil) return { text: `${S.name} đang hót líu lo.` };
   if (S.covered) return { text: S.newDays > 0 ? 'Chim mới về đang dần quen trong áo lồng.' : 'Chim yên lặng trong áo lồng, ít vận động.' };
   if (S.molt) return { text: 'Đang thay lông: lông xơ, ít hót, cần được chăm kỹ.' };
+  if (S.vigor > 90) return { strong: 'Quá lửa', text: fireBand(S.vigor, sp).sign };
+  if (sp.skill === 'song' && S.vigor < 40 && S.newDays === 0) return { strong: 'Xuống lửa', text: fireBand(S.vigor, sp).sign };
   if (S.newDays > 0 || S.mood < 35) return { text: 'Chim còn nhát, đập cánh khi có người lại gần.' };
   if (S.mood > 70) return { text: 'Chim nhảy nhót, chuyền cầu liên tục.' };
   return { text: 'Chim đứng chải lông, thỉnh thoảng nhảy cầu.' };

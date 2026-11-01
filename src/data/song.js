@@ -13,3 +13,14 @@ export function songLevel(v = 0) {
   while (i + 1 < SONG_LEVELS.length && v >= SONG_LEVELS[i + 1].min) i++;
   return i;
 }
+
+/** Độ sung ("lửa") theo cách người chơi chim gọi, kèm dấu hiệu nhìn thấy được. Nguồn: docs/LIFECYCLE_RESEARCH.md mục 4. */
+export const FIRE_BANDS = [
+  { min: 0, name: 'Xuống lửa', sign: 'Lông hơi xù, đứng thu mình, hót rời rạc hoặc bỏ hót, hay rỉa lông.', crest: 'Mào cụp. ' },
+  { min: 40, name: 'Vừa lửa', sign: 'Lông ép gọn, đứng thẳng, nhảy cầu đều.' },
+  { min: 75, name: 'Căng lửa', sign: 'Lông ép sát, đuôi vểnh, hót to và đều.' },
+  { min: 90, name: 'Quá lửa', sign: 'Nhảy loạn lồng, đập cánh, hót gắt: nên bớt mồi và giọng mồi, cho tắm.' },
+];
+/** Mức lửa ứng với v; sp (nếu có) để chỉ nói tới mào với loài có mào. */
+export const fireBand = (v, sp) => { const F = fireBandOf(v); return F.crest && (sp?.model.crest || sp?.model.tuft) ? { ...F, sign: F.crest + F.sign } : F; };
+const fireBandOf = (v) => { let i = 0; while (i < FIRE_BANDS.length - 1 && v >= FIRE_BANDS[i + 1].min) i++; return FIRE_BANDS[i]; };

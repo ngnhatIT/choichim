@@ -47,6 +47,7 @@
           </div>
         </div>
         <button class="tb-btn" id="viewBtn" aria-keyshortcuts="V" data-tip="Đổi góc nhìn (V)"></button>
+        <button class="tb-btn" id="relaxBtn" aria-keyshortcuts="L" data-tip="Nghe chim hót, tạm dừng thời gian (L)"></button>
         <button class="tb-btn" id="focusBtn" aria-keyshortcuts="H" aria-pressed="false" data-tip="Ngắm chim, ẩn bảng (H)"></button>
         <button class="tb-btn" id="hbBtn" aria-keyshortcuts="S" data-tip="Sổ tay nuôi chim (S)"></button>
       </div>
@@ -77,6 +78,7 @@
       <div class="progress" aria-hidden="true"><i id="goalsBar"></i></div>
       <ul class="goal-list" id="goalList"></ul>
     </details>
+    <button class="next-goal" id="nextGoal" type="button"></button>
     <h2 class="sec-h">Việc cần làm</h2>
     <div id="actions" class="groups" tabindex="-1"></div>
     <p class="hint" id="hint"></p>
@@ -91,7 +93,9 @@
   <div class="tip" id="tip" aria-hidden="true" hidden></div>
   <div class="bubble" id="bubble" hidden></div>
   <div class="needs" id="needs" role="group" aria-label="Chim đang cần"></div>
-  <button class="focus-pill" id="focusPill" hidden></button>
+  <div class="coach" id="coach" hidden><span class="c-ring" aria-hidden="true"></span><div class="c-card" role="status"><p id="coachTx"></p><button class="c-x" id="coachX">Tắt hướng dẫn</button></div></div>
+  <div class="floats" id="floats" aria-hidden="true"></div>
+  <button class="focus-pill" id="focusPill" aria-live="polite" hidden></button>
   <div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="mTitle"><div class="modal" id="modal"></div></div>
   <noscript>Lồng Tre cần JavaScript và WebGL để chạy.</noscript>
   <script type="module" src="/src/main.js"></script>

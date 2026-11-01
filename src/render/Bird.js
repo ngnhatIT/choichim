@@ -15,6 +15,32 @@ const hex = (h) => new THREE.Color(h);
 const mixHex = (a, b, k) => '#' + hex(a).lerp(hex(b), k).getHexString();
 const shade = (h, k) => '#' + hex(h).multiplyScalar(k).getHexString();
 
+/**
+ * Bộ lông theo tuổi: a = 0 lông non (model.juvenile ghi đè), 1 = lông trưởng thành; ở giữa là đang thay lông.
+ * Chim non nhỏ hơn, đuôi ngắn hơn, đầu to so với thân.
+ */
+export function stageModel(model, a = 1, old = false) {
+  // Chim lâu năm: lông kém bóng, màu hơi bạc đi một chút
+  // (chân vảy dày, bạc màu, lông mất độ bóng là dấu hiệu tuổi người nuôi hay để ý)
+  if (old) return { ...model, glossK: 0.5, plumpK: 1.04, colors: Object.fromEntries(Object.entries(model.colors).map(([k, v]) => [k, mixHex(v, k === 'legs' ? '#D2CABC' : '#8C877E', k === 'legs' ? 0.4 : 0.2)])) };
+  const J = model.juvenile;
+  if (!J || a >= 1) return model;
+  const colors = { ...model.colors };
+  for (const [k, v] of Object.entries(J.colors || {})) {
+    if (v === null) { if (a < 0.6) delete colors[k]; continue; } // mảng màu chưa mọc (má đỏ chào mào)
+    colors[k] = colors[k] ? mixHex(v, colors[k], a) : v;
+  }
+  const young = a < 0.5;
+  return {
+    ...model, colors, size: model.size * lerp(0.9, 1, a), tail: model.tail * lerp(0.78, 1, a), headK: lerp(1.07, 1, a),
+    crestK: lerp(J.crestK ?? 1, 1, a), ringK: lerp(J.ringK ?? 1, 1, a),
+    darkEye: J.darkEye && young, foreheadBars: J.foreheadBars && young, scalyBreast: J.scalyBreast && a < 0.7,
+  };
+}
+
+// Máy yếu (ít nhân CPU): bớt một nửa số lớp lông tơ để giữ khung hình mượt
+const FUZZ_Q = typeof navigator !== 'undefined' && (navigator.hardwareConcurrency || 8) <= 4 ? 0.5 : 1;
+
 const BODY_Y = 0.05;            // tâm thân so với bàn chân (đơn vị model, size = 1)
 const TIB = 0.026, TAR = 0.024; // đùi-ống (khuất trong lông) và cẳng chân
 const HIP = [0.004, -0.022];    // khớp hông trong khung thân
@@ -105,7 +131,10 @@ function traitsFor(key, model) {
   if (model.brow) { T.gestures.flick = 1.3; T.bold = 1; }
   if (C.eyeRing && !model.brow) { T.ring = 0.0024; T.gestures.fidget = 1.6; T.hopRate = 2.8; }
   Object.assign(T, TUNE[key] || {});
-  T.head *= 1.1; // đầu to hơn thật một chút: tỉ lệ "dễ thương" (Kindchenschema), xem docs/GAME_RESEARCH.md
+  T.head *= 1.1 * (model.headK || 1); // đầu to hơn thật một chút: tỉ lệ "dễ thương" (Kindchenschema), xem docs/GAME_RESEARCH.md
+  T.ring *= model.ringK ?? 1; // chim non: vòng mắt còn mảnh
+  T.gloss *= model.glossK ?? 1;
+  T.plump *= model.plumpK ?? 1;
   if (T.twoFoot) T.gestures.sidestep = (T.gestures.sidestep || 0) + 0.8; // nhảy hai chân dọc cầu
   // Màu phụ suy ra từ màu sẵn có
   T.throat = C.throat || C.whiteCheek || (model.lowBelly || model.parrot ? C.head : mixHex(C.head, C.belly, 0.5));
@@ -175,6 +204,8 @@ const ACTS = {
   },
   grip: { dur: [1.3, 1.8], tick(a, dt, f, g) { g.crouch = 0.65; g.fluff = -0.3; g.liftL = g.liftR = 0.35; g.lean = -0.1; this.idleLook(dt, { nervous: true }, g, 1.2); } },
   wake: { dur: [2.4, 2.8], tick(a, dt, f, g, o) { if (a.t < 1.5) this.stretchTick({ t: a.t, dur: 1.5, kind: 'up' }, dt, f, g); else this.shakeTick({ t: a.t - 1.5, dur: a.dur - 1.5 }, f, g, o); } },
+  // Chim non đói: hạ mình, ngửa đầu há mỏ, hai cánh rung run run như đòi bố mẹ mớm mồi
+  beg: { dur: [1.4, 2.4], tick(a, dt, f, g, o) { this.begTick(a, dt, f, g, o); } },
   alert: { dur: [1, 1.6], tick(a, dt, f, g) { g.fluff = -0.4; g.lean = 0.2; g.hPitch = 0.15; g.crest = 0.8; this.idleLook(dt, { nervous: true }, g, 1.3); } },
 };
 
@@ -239,6 +270,7 @@ export class Bird {
     // Một InstancedMesh mỗi phần, gl_InstanceID là chỉ số lớp; con của mesh gốc nên co giãn, xù lông theo.
     const fz = fuzzTexture();
     const fuzz = (base, len, rep, layers = 6) => {
+      layers = Math.max(2, Math.round(layers * FUZZ_Q));
       const am = fz.clone(); am.wrapS = am.wrapT = THREE.RepeatWrapping; am.repeat.set(...rep); am.needsUpdate = true;
       this.texs.push(am);
       const vc = !!base.geometry.attributes.color;
@@ -289,7 +321,7 @@ export class Bird {
       let k = sstep(b + 0.09, b - 0.09, v);
       if (model.lowBelly) k *= sstep(0.62, 0.3, u);
       out.lerp(bot, k);
-      if (breast) out.lerp(breast, sstep(0.3, 0.8, u) * sstep(0.45, -0.2, v));
+      if (breast) out.lerp(breast, sstep(0.3, 0.8, u) * sstep(0.45, -0.2, v) * (model.scalyBreast ? 0.35 + 0.65 * sstep(0.1, 0.6, Math.sin(x * 900) * Math.sin(z * 700 + 1)) : 1)); // chích chòe non: ngực lốm đốm vảy
       if (band) out.lerp(band, Math.exp(-((u - 0.52) ** 2) / 0.018) * sstep(0.25, 0.6, w) * sstep(0.5, 0, v) * 0.9);
       out.lerp(vent, sstep(-0.5, -0.85, u) * sstep(0.1, -0.45, v));
       out.multiplyScalar(0.8 + 0.2 * sstep(-1, 0.1, v)); // bóng tối tự nhiên dưới bụng
@@ -389,7 +421,8 @@ export class Bird {
 
     // Mắt: tròng đen bóng, đốm sáng, vòng mắt (khuyên, họa mi), vệt mi trắng (họa mi)
     const eyeR = 0.0049 * hs * (T.ring > 0.002 ? 0.9 : 1);
-    const eyeMat = new THREE.MeshPhysicalMaterial({ color: T.parrot ? '#D9D4C8' : C.iris || '#4A2914', roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.03 }); this.mats.push(eyeMat);
+    const whiteIris = T.parrot && !model.darkEye; // yến phụng trưởng thành có vòng mống mắt trắng; con non mắt đen tuyền
+    const eyeMat = new THREE.MeshPhysicalMaterial({ color: whiteIris ? '#D9D4C8' : T.parrot ? '#17110C' : C.iris || '#4A2914', roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.03 }); this.mats.push(eyeMat);
     const pupilMat = M('#050403', { roughness: 0.2 });
     const lidMat = M(C.head, { roughness: 0.85 });
     const glint = new THREE.MeshBasicMaterial({ color: '#ffffff' }); this.mats.push(glint);
@@ -399,14 +432,15 @@ export class Bird {
       const holder = new THREE.Group(); holder.position.copy(d); head.add(holder);
       const ball = new THREE.Group(); holder.add(ball);
       mesh(g.lo, eyeMat, eyeR, eyeR, eyeR, 0, 0, 0, ball);
-      mesh(g.lo, pupilMat, eyeR * (T.parrot ? 0.5 : 0.68), eyeR * (T.parrot ? 0.5 : 0.68), eyeR * 0.34, 0, 0, s * eyeR * 0.8, ball);
+      mesh(g.lo, pupilMat, eyeR * (whiteIris ? 0.5 : 0.68), eyeR * (whiteIris ? 0.5 : 0.68), eyeR * 0.34, 0, 0, s * eyeR * 0.8, ball);
       // Hai đốm sáng: một to phía trên trước, một nhỏ phía dưới sau → mắt long lanh, có hồn
       mesh(g.lo, glint, eyeR * 0.28, eyeR * 0.28, eyeR * 0.2, eyeR * 0.36, eyeR * 0.4, s * eyeR * 0.84, ball);
       mesh(g.lo, glint, eyeR * 0.12, eyeR * 0.12, eyeR * 0.1, -eyeR * 0.3, -eyeR * 0.36, s * eyeR * 0.9, ball);
       const lid = mesh(g.lid, lidMat, eyeR * 1.14, eyeR * 1.14, eyeR * 1.14, 0, 0, 0, holder); // mí dưới kéo lên khi chớp
       if (ringMat) {
         const r = mesh(g.ring, ringMat, eyeR * 1.25, eyeR * 1.25, T.ring / 0.22 / 1.0 * 0.6, 0, 0, s * eyeR * 0.15, holder);
-        r.scale.set(eyeR * 1.2 + T.ring * 0.5, eyeR * 1.2 + T.ring * 0.5, eyeR);
+        const rk = T.ring / 0.0024; // 1 = vòng mắt đầy đặn của chim trưởng thành
+        r.scale.set(eyeR * (1 + 0.2 * rk) + T.ring * 0.5, eyeR * (1 + 0.2 * rk) + T.ring * 0.5, eyeR * (0.5 + 0.5 * rk));
       }
       if (model.brow) { // vệt mi trắng kéo dài sau mắt
         const st = decal([-0.05, 0.36, s * 0.93], 0.0115, 0.0023, 0.0018, ringMat || M('#F4F0E6'));
@@ -431,7 +465,11 @@ export class Bird {
 
     // Chi tiết đầu từng loài
     if (model.parrot) {
-      decal([0.9, 0.12, 0], 0.0065, 0.004, 0.0045, M('#4F6FC8'), 0); // mũi (cere)
+      decal([0.9, 0.12, 0], 0.0065, 0.004, 0.0045, M(C.cere || '#4F6FC8'), 0); // mũi (cere): trống xanh dương, mái nâu; con non hồng nhạt
+      if (model.foreheadBars) { // con non: vằn đen kéo tới trán, sát mũi
+        const bar = M('#2B2A1E');
+        for (const [y, w] of [[0.42, 0.0105], [0.6, 0.0115], [0.76, 0.01]]) decal([0.82 - y * 0.55, y, 0], w, 0.0009, 0.0012, bar);
+      }
       for (const s of [-1, 1]) fuzz(decal([0.4, -0.55, s * 0.73], 0.0058, 0.0072, 0.0026, M(C.cheek, { roughness: 0.9 })), 0.0006, [2, 2], 4); // má tím
       const dot = M('#141414');
       for (const zz of [-0.42, -0.16, 0.16, 0.42]) decal([0.68, -0.72, zz], 0.0022, 0.0022, 0.0016, dot); // đốm cổ
@@ -446,6 +484,7 @@ export class Bird {
         ? [[0.054, 0.0115, 0, 0], [0.046, 0.0115, 0.15, 0.0016], [0.046, 0.0115, 0.15, -0.0016], [0.036, 0.012, 0.34, 0], [0.026, 0.012, 0.56, 0]]
         : [[0.019, 0.0075, 0, 0], [0.016, 0.007, 0.35, 0.0025], [0.016, 0.007, 0.35, -0.0025], [0.013, 0.007, 0.7, 0]];
       for (const [len, w, a, z] of list) { const m = mesh(g.featherV, cm, len, w, w, -a * 0.012, 0, z, crest); m.rotation.z = a; m.castShadow = true; }
+      crest.userData.k = model.crestK ?? 1; // chim non: mào, chỏm lông còn ngắn
       if (model.crest) { crest.position.set(hr * 0.12, hr * 0.84, 0); crest.userData.rest = -Math.PI / 2 + 0.32; crest.userData.up = -0.5; }
       else { crest.position.set(hr * 0.8, hr * 0.42, 0); crest.userData.rest = -Math.PI / 2 - 0.55; crest.userData.up = -0.25; }
     }
@@ -639,9 +678,11 @@ export class Bird {
     if (f.eat) w.peck = f.hungry ? 7 : calm ? 0.5 : 1.3;
     else if (f.hungry && !calm) w.search = 2.5;
     if (f.fresh && !calm) w.nibble = 0.6;
+    if (f.young && f.peckish && !calm) w.beg = f.hungry ? 4 : 1.5;
+    if (f.overFire && !calm) { w.flutter = (w.flutter || 0) + 1.2; w.hop = (w.hop || 0) + 2; }
     if (f.water) w.drink = (f.hot ? 1.4 : 0.4) * (calm ? 0.5 : 1);
     else if (!calm) w.seekWater = 2.5;
-    w.preen = 0.55 + (f.wet ? 2.2 : 0) + (f.molt ? 1 : 0) + (f.itch ? 2.5 : 0);
+    w.preen = 0.55 + (f.wet ? 2.2 : 0) + (f.molt ? 1 : 0) + (f.itch ? 2.5 : 0) + (f.ragged ? 1.2 : 0) + (f.lowFire ? 0.8 : 0);
     if (f.covered && !f.sick) w.settle = 3;
     if (!calm) {
       w.stretch = 0.25;
@@ -717,6 +758,8 @@ export class Bird {
     if (f.drowsy && mode === 'normal') { g.eyes = Math.min(g.eyes, 0.55); g.neck -= 0.4; }
     if (T.bold && mode === 'normal') { g.lean += 0.1; g.hPitch += 0.06; } // họa mi: dáng ngực ưỡn
     if (f.excited && mode === 'normal') g.crest = Math.max(g.crest, 0.5);
+    if (f.lowFire && mode === 'normal') { g.fluff = Math.max(g.fluff, 0.35); g.crest = 0; g.neck -= 0.25; g.tail += 0.1; } // xuống lửa: thu mình
+    if (f.ragged && mode !== 'sleep') g.fluff = Math.max(g.fluff, 0.2); // lông xơ không ép sát thân
     if (f.molt !== this.molted) this.setMolt(f.molt);
     if (f.molt && mode === 'normal' && Math.random() < dt * 0.04) this.loose = 1; // mùa thay lông: lông rụng lác đác
 
@@ -1015,6 +1058,16 @@ export class Bird {
     this.idleLook(dt, { nervous: true }, g, 1.4);
   }
 
+  begTick(a, dt, f, g, o) {
+    const e = env(a.t, a.dur, 0.2, 0.3), t = this.time;
+    g.crouch = 0.45 * e; g.fluff = 0.4; g.lean = -0.1;
+    this.lookAtCam(a, f, g, 0.15);
+    g.hPitch = Math.max(g.hPitch, 0.45) * e;
+    g.liftL = g.liftR = 0.55 * e;
+    o.wing += (0.15 + 0.2 * Math.abs(Math.sin(t * 38))) * e; // cánh rung nhanh
+    o.beak += (0.35 + 0.25 * Math.max(0, Math.sin(t * 9))) * e;
+  }
+
   attendTick(a, dt, f, g, o) { // nghe người nói: quay đầu nhìn, nghiêng qua lại
     if (a.t > (a.flipAt ?? 0.9)) { a.side = -(a.side ?? 1); a.flipAt = a.t + rand(0.7, 1.1); }
     this.lookAtCam(a, f, g, 0.45);
@@ -1126,7 +1179,7 @@ export class Bird {
     if (B.crest) {
       const c = clamp01(P.crest), u = B.crest.userData;
       B.crest.rotation.z = u.rest + u.up * c;
-      B.crest.scale.y = 0.9 + 0.15 * c;
+      B.crest.scale.set(u.k, u.k * (0.9 + 0.15 * c), u.k);
     }
     // Mắt
     // Mí dưới: úp vào trong đầu khi mở, kéo lên phủ mắt khi nhắm

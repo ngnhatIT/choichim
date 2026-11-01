@@ -352,3 +352,104 @@ describe('Lồng Tre - bản lưu cũ', () => {
     expect(dailyGoals(g.S, g.sp).length).toBeGreaterThan(3);
   });
 });
+
+describe('Tuổi chim khi đón về', () => {
+  const opts = { staple: 'cm', fresh: 'chuoi', protein: 'caocao', tutor: 2 };
+  it('chim chuyền thiếu mồi mềm thì bị nhắc trong việc hôm nay', () => {
+    const g = new Game({ seed: 3, storage: null });
+    g.newGame('khuyen', 'K', 'chuyen');
+    expect(dailyGoals(g.S, g.sp).some((x) => x.id === 'soft' && !x.done)).toBe(true);
+    g.act('fresh', { food: 'trung' }); g.act('fresh', { food: 'trung' });
+    expect(dailyGoals(g.S, g.sp).find((x) => x.id === 'soft').done).toBe(true);
+  });
+  it('chim chuyền dạn người hơn, giọng chưa định (không vượt trần), chim lâu năm giữ giọng cao', () => {
+    const run = (stage) => {
+      const g = new Game({ seed: 7, storage: null });
+      g.newGame('chaomao', 'T', stage);
+      const start = { trust: g.S.trust, song: g.S.song };
+      for (let i = 0; i < 14 && !g.S.over; i++) { playGoodDay(g, opts); if (g.pending?.type === 'report') g.nextDay(); }
+      return { start, S: g.S };
+    };
+    const juv = run('chuyen'), adult = run('truong'), old = run('gia');
+    expect(juv.start.trust).toBeGreaterThan(adult.start.trust);
+    expect(juv.S.song).toBeLessThanOrEqual(60);
+    expect(juv.S.song).toBeGreaterThan(juv.start.song + 20); // vẫn học giọng mồi tốt
+    expect(old.start.song).toBeGreaterThan(adult.start.song);
+    expect(old.S.song).toBeGreaterThanOrEqual(old.start.song);
+    for (const r of [juv, adult, old]) { expect(r.S.day).toBe(14); expect(r.S.health).toBeGreaterThan(50); }
+  });
+
+  it('bản lưu cũ không có tuổi thì coi là chim trưởng thành', () => {
+    const g = new Game({ seed: 1, storage: null });
+    g.newGame('khuyen', 'K');
+    const old = JSON.parse(JSON.stringify(g.S)); delete old.stage;
+    g.load(old);
+    expect(g.S.stage).toBe('truong');
+  });
+});
+
+describe('Lai giọng ở chim chuyền', () => {
+  it('chim tơ nghe karaoke thì lai giọng; chim trưởng thành không bị', async () => {
+    const { HOUSEHOLD_EVENTS } = await import('../src/core/householdEvents.js');
+    const { observe } = await import('../src/core/actions.js');
+    const kara = HOUSEHOLD_EVENTS.find((e) => e.id === 'karaoke');
+    for (const [stage, want] of [['chuyen', 22], ['truong', 0]]) {
+      const g = new Game({ seed: 2, storage: null });
+      g.newGame('chaomao', 'T', stage);
+      kara.choices[1].apply(g.S, g.ctx);
+      expect(g.S.mix).toBe(want);
+      if (want) expect(observe(g.S, g.sp)).toContain('lai giọng');
+    }
+  });
+});
+
+describe('Khớp giữa việc hôm nay và cách chấm (sau chấm độc lập)', () => {
+  it('cho ngủ khi chưa trùm áo: game trùm áo giúp, không bị chấm lỗi', () => {
+    const g = new Game({ seed: 4, storage: null });
+    g.newGame('chaomao', 'T');
+    g.act('cover'); // mở áo
+    while (g.S.t < 18 * 60 && g.running) { g.advance(18 * 60 - g.S.t); while (g.pending?.type === 'event') g.chooseEvent(0); }
+    if (g.S.covered) g.act('cover'); // sự kiện có thể đã trùm áo giúp: mở ra để kiểm tra
+    expect(g.S.covered).toBe(false);
+    g.act('sleep');
+    expect(g.S.covered).toBe(true);
+    expect(g.pending.report.items.some((x) => x.label === 'Không trùm áo lồng ban đêm')).toBe(false);
+  });
+  it('sâu quy không tính là mồi mềm cho chim non', () => {
+    const g = new Game({ seed: 4, storage: null });
+    g.newGame('chaomao', 'T', 'chuyen');
+    g.act('fresh', { food: 'sauquy' }); g.act('fresh', { food: 'sauquy' });
+    expect(dailyGoals(g.S, g.sp).find((x) => x.id === 'soft').done).toBe(false);
+  });
+  it('mồi tươi vài lần mỗi tuần là đủ: bỏ một ngày không bị chấm thiếu', () => {
+    const g = new Game({ seed: 4, storage: null });
+    g.newGame('chichchoe', 'T');
+    g.S.lastProtein = g.S.day; // hôm qua đã cho
+    g.S.day += 1;
+    expect(dailyGoals(g.S, g.sp).some((x) => x.id === 'protein')).toBe(false);
+  });
+});
+
+describe('Chim ốm', () => {
+  it('không giao việc trò chuyện, tổng kết không phạt vì để chim nghỉ', () => {
+    const g = new Game({ seed: 5, storage: null });
+    g.newGame('chaomao', 'T');
+    g.S.newDays = 0; g.S.sick = { type: 'cam_lanh', since: g.S.t };
+    expect(dailyGoals(g.S, g.sp).some((x) => x.id === 'bond')).toBe(false);
+  });
+});
+
+describe('Thay lông theo tuổi', () => {
+  it('chim chuyền thay sớm hơn, chim lâu năm thay lâu hơn', () => {
+    const molt = (stage) => {
+      const g = new Game({ seed: 9, storage: null });
+      g.newGame('khuyen', 'K', stage);
+      const days = [];
+      for (let i = 0; i < 14 && !g.S.over; i++) { if (g.S.molt) days.push(g.S.day); playGoodDay(g, { staple: 'khuyen', fresh: 'chuoi' }); if (g.pending?.type === 'report') g.nextDay(); }
+      return days;
+    };
+    const juv = molt('chuyen'), adult = molt('truong'), old = molt('gia');
+    expect(juv[0]).toBeLessThan(adult[0]);
+    expect(old.length).toBeGreaterThan(adult.length);
+  });
+});

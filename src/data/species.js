@@ -10,6 +10,7 @@ import { COMMON_FOOD } from './foods.js';
  * bathGap  : số ngày tối đa giữa hai lần tắm
  * voice    : mô tả tiếng hót, tiếng kêu (hiện trong Sổ tay, màn hình chọn chim)
  * model    : thông số dựng hình 3D (màu, hình dáng, kích thước so với chào mào)
+ *            juvenile: bộ lông chim non (chim chuyền) ghi đè lên model, xem data/stages.js stageModel()
  */
 export const SPECIES = {
   yenphung: {
@@ -46,6 +47,8 @@ export const SPECIES = {
       size: 0.9, tail: 1.3,
       colors: { body: '#6BBF4E', belly: '#86CF62', head: '#F0DA45', wing: '#58A443', tail: '#3E7FA8', bill: '#E8D7A2', legs: '#A99DB8', cheek: '#3E5FC4' },
       parrot: true, barring: true,
+      // Non: vằn đen kéo tới sát mũi, mắt đen tuyền chưa có vòng mống mắt trắng, mũi hồng nhạt, đốm cổ nhỏ, đuôi ngắn
+      juvenile: { colors: { head: '#DCCB52', cere: '#D9AFC0', cheek: '#6F84C8' }, darkEye: true, foreheadBars: true },
     },
   },
 
@@ -83,6 +86,8 @@ export const SPECIES = {
       size: 1, tail: 1.1,
       colors: { body: '#6E5E4A', belly: '#EFEBE1', head: '#1B1A1A', wing: '#5E503E', tail: '#5A4B39', bill: '#151515', legs: '#3A3230', cheek: '#C8302A', whiteCheek: '#F3F0E8', vent: '#C8302A' },
       crest: true,
+      // Non: chưa có túm lông đỏ sau mắt, mào ngắn, lông dưới đuôi cam hồng nhạt thay vì đỏ, lưng nâu nhạt hơn
+      juvenile: { colors: { body: '#7D6C56', wing: '#6B5C48', cheek: null, vent: '#E5A27C' }, crestK: 0.55 },
     },
   },
 
@@ -119,6 +124,8 @@ export const SPECIES = {
       size: 1.15, tail: 0.9,
       colors: { body: '#28282E', belly: '#303038', head: '#1E1E23', wing: '#222228', tail: '#1F1F25', tailTip: '#EFEBE0', bill: '#EFE5C3', legs: '#D9B64A', wingPatch: '#EFEBE0' },
       tuft: true,
+      // Non: lông nâu xám chưa đen tuyền, chỏm lông trán còn ngắn, mỏ và chân nhạt màu
+      juvenile: { colors: { body: '#4A433D', head: '#433D38', wing: '#45403A', belly: '#57504A', tail: '#3D3833', bill: '#E9E0BE', legs: '#CDB66A' }, crestK: 0.4 },
     },
   },
 
@@ -155,6 +162,8 @@ export const SPECIES = {
       size: 1, tail: 1.6,
       colors: { body: '#1C1D22', belly: '#F1F0EB', head: '#17181C', wing: '#1E1F24', wingBar: '#F1F0EB', tail: '#141519', tailEdge: '#F1F0EB', bill: '#111111', legs: '#2C2C30' },
       lowBelly: true, tailUp: true,
+      // Non: lưng đầu nâu xám chưa đen bóng, ngực lốm đốm vảy nâu cam; vạch cánh trắng đã có
+      juvenile: { colors: { body: '#4C4540', head: '#4F4741', wing: '#433D38', belly: '#E6D9C3', throat: '#B88F63', tail: '#2E2A27' }, scalyBreast: true },
     },
   },
 
@@ -189,6 +198,8 @@ export const SPECIES = {
     model: {
       size: 0.62, tail: 0.85,
       colors: { body: '#8DAE3A', belly: '#DCE1B0', head: '#93B43E', throat: '#E8CF2E', wing: '#7A9A30', tail: '#6E8A2C', bill: '#2B2B2B', legs: '#5A5A5A', eyeRing: '#FFFFFF' },
+      // Non: xanh xỉn hơn, họng vàng nhạt, vòng mắt trắng còn mảnh, chưa khép kín
+      juvenile: { colors: { body: '#93A852', head: '#97AC55', throat: '#DCCF6E', wing: '#82974A', eyeRing: '#E4E6D8' }, ringK: 0.45 },
     },
   },
 
@@ -225,6 +236,8 @@ export const SPECIES = {
       size: 1.05, tail: 1.2,
       colors: { body: '#9E6B37', belly: '#C59B63', head: '#93622F', wing: '#875A2C', tail: '#7E5428', bill: '#D8B03C', legs: '#C9A86A', eyeRing: '#F4F0E6' },
       brow: true,
+      // Non: nâu xỉn, vệt mi trắng sau mắt còn mờ, mỏ nhạt
+      juvenile: { colors: { body: '#A47C52', head: '#9A7450', belly: '#BFA07A', eyeRing: '#C9B79A', bill: '#D9C27A' } },
     },
   },
 };

@@ -4,6 +4,7 @@ import { LOCATIONS, HOME_SPOTS } from '../data/locations.js';
 import { DISEASES } from '../data/diseases.js';
 import { HANDBOOK, DISCLAIMER } from '../data/handbook.js';
 import { SONG_LEVELS } from '../data/song.js';
+import { STAGES, STAGE_ORDER, isYoung } from '../data/stages.js';
 import { MIX_DAYS, TOTAL_DAYS } from '../config.js';
 import { ACHIEVEMENTS, loadAchievements } from '../core/achievements.js';
 import { entryHtml } from './Hud.js';
@@ -91,7 +92,7 @@ export class Modals {
   }
 
   // Khi hộp thoại mở, phần còn lại của trang không nhận focus và bị trình đọc màn hình bỏ qua
-  setInert(on) { document.querySelectorAll('#scene, .topbar, .tabs, .panel, .skip').forEach((el) => { el.inert = on; }); }
+  setInert(on) { document.querySelectorAll('#scene, .topbar, .tabs, .panel, .skip, #needs, #coach, #focusPill').forEach((el) => { el.inert = on; }); }
 
   countUp(el, to) {
     if (reduced() || !to) return;
@@ -160,7 +161,7 @@ export class Modals {
   /* ---------- Bắt đầu ---------- */
   start({ saved, thumbs, onNew, onContinue }) {
     this.thumbs = thumbs || this.thumbs;
-    let pick = null;
+    let pick = null, age = 'truong';
     const cards = SPECIES_ORDER.map((k) => {
       const P = SPECIES[k];
       return `<article class="sp-card">
@@ -172,13 +173,24 @@ export class Modals {
       </article>`;
     }).join('');
     const S0 = saved && !saved.over ? saved : null;
-    const cont = S0 ? `<div class="cont">${this.thumb(S0.sp, 'bc-img')}<div><b>${esc(S0.name)}</b><span>${SPECIES[S0.sp]?.name || ''}, đang ở ngày ${S0.day}/${TOTAL_DAYS}</span></div><button class="btn btn-primary" data-do="continue" data-autofocus>${icon('play')}Tiếp tục nuôi</button></div>` : '';
+    const cont = S0 ? `<div class="cont">${this.thumb(S0.sp + (S0.stage === 'gia' ? ':gia' : isYoung(S0) ? ':non' : ''), 'bc-img')}<div><b>${esc(S0.name)}</b><span>${SPECIES[S0.sp]?.name || ''}, đang ở ngày ${S0.day}/${TOTAL_DAYS}</span></div><button class="btn btn-primary" data-do="continue" data-autofocus>${icon('play')}Tiếp tục nuôi</button></div>` : '';
     const step2 = () => {
       const P = SPECIES[pick];
-      if (!P.wild) { $('#step2').innerHTML = ''; return nameStep($('#step2')); }
+      if (!P.wild) { $('#step2').innerHTML = ''; return ageStep($('#step2')); }
       $('#step2').innerHTML = `<div class="slip"><h3>${icon('pin')}Bạn nhận ${P.short} từ đâu?</h3><div class="choice">
         <button data-do="farm"><span class="ci">${icon('home')}</span><span><b>Trại nuôi sinh sản, có nguồn gốc rõ ràng</b><span class="d">Chim quen người từ nhỏ, đã ăn cám, ít sốc môi trường, có giấy tờ chứng minh.</span></span>${icon('chevron', 'go')}</button>
         <button data-do="wild"><span class="ci">${icon('alert')}</span><span><b>Chợ chim trời, chim bẫy ngoài tự nhiên</b><span class="d">Giá rẻ, bán nhiều ở chợ và trên mạng.</span></span>${icon('chevron', 'go')}</button></div><div id="step3"></div></div>`;
+    };
+    // Tuổi chim: đổi nhu cầu, sức đề kháng, cách học giọng và bộ lông (data/stages.js)
+    const ageStep = (target = $('#step3')) => {
+      const P = SPECIES[pick];
+      const wrap = target.id === 'step2' ? (h) => `<div class="slip">${h}</div>` : (h) => `<div class="step">${h}</div>`;
+      const ic = { chuyen: 'leaf', truong: 'bird', gia: 'star' };
+      target.innerHTML = wrap(`<h3>${icon('calendar')}Chú ${P.short} bao nhiêu tuổi?</h3><div class="choice ages">${STAGE_ORDER.map((k) => {
+        const A = STAGES[k];
+        return `<button data-do="age" data-arg="${k}" aria-pressed="${k === age}"><span class="ci">${icon(ic[k])}</span><span><b>${A.name} <small>${A.age}</small></b><span class="d">${A.desc}</span></span>${icon('check', 'go')}</button>`;
+      }).join('')}</div><div id="step4"></div>`);
+      nameStep($('#step4'));
     };
     const nameStep = (target = $('#step3')) => {
       const P = SPECIES[pick];
@@ -198,12 +210,17 @@ export class Modals {
         $('#step2').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'nearest' });
       },
       listen: (k) => this.listen(k),
-      farm: () => nameStep(),
+      farm: () => ageStep(),
+      age: (k, btn) => {
+        age = k;
+        this.box.querySelectorAll('.ages button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+        $('#nm')?.focus();
+      },
       wild: () => {
         $('#step3').innerHTML = `<div class="warnbox"><b>${icon('alert')}Lồng Tre không cho chọn lựa này.</b><p>Chim bẫy từ tự nhiên thường bị sốc, “ngã nước”, nhiều con chết trong những ngày đầu. Săn bắt, mua bán chim hoang dã trái phép là vi phạm pháp luật, có thể bị xử phạt hành chính hoặc truy cứu trách nhiệm hình sự. Mỗi con chim được mua là thêm một lý do để người ta tiếp tục giăng lưới.</p><button class="btn btn-primary" data-do="farm" style="margin-top:6px">${icon('home')}Chọn chim từ trại nuôi sinh sản</button></div>`;
         $('#step3 .btn').focus();
       },
-      go: () => { const n = ($('#nm')?.value || '').trim() || 'Chim'; this.close(); onNew(pick, n); },
+      go: () => { const n = ($('#nm')?.value || '').trim() || 'Chim'; this.close(); onNew(pick, n, age); },
       continue: () => { this.close(); onContinue(); },
     }, { dismissible: false, cls: 'wide' });
   }
