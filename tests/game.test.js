@@ -34,7 +34,7 @@ function playGoodDay(g, opts) {
 
 function runCampaign(sp, opts, seed = 42, storage) {
   const g = new Game({ seed, storage });
-  g.newGame(sp, 'Test');
+  g.newGame(sp, 'Test', 'truong', { traits: { temper: 'binh', appetite: 'binh', fire: 'binh', fav: null } }); // cân bằng không phụ thuộc tính cách
   for (let i = 0; i < 14 && !g.S.over; i++) {
     playGoodDay(g, opts);
     if (g.pending?.type === 'report') g.nextDay();
@@ -672,5 +672,48 @@ describe('Lồng Tre - bệnh và liệu trình', () => {
     adv(g, 120);
     expect(g.pending?.type).toBe('over');
     expect(g.pending.sick.type).toBe('tieu_chay');
+  });
+});
+
+describe('Lồng Tre - tính cách chim', () => {
+  const NORMAL = { temper: 'binh', appetite: 'binh', fire: 'binh', fav: null };
+  const mk = (traits, sp = 'chaomao') => { const g = new Game({ seed: 8, storage: null }); g.newGame(sp, 'C', 'truong', { traits }); g.S.schedule = {}; return g; };
+
+  it('chim nhát tăng thân thiết chậm hơn chim dạn', () => {
+    const trust = (temper) => { const g = mk({ ...NORMAL, temper }); g.S.newDays = 0; for (let i = 0; i < 3; i++) g.act('talk'); return g.S.trust; };
+    expect(trust('nhat')).toBeLessThan(trust('binh'));
+    expect(trust('binh')).toBeLessThan(trust('dan'));
+  });
+
+  it('nhận ra tính nết ở lần quan sát đầu tiên sau thời chim mới về', () => {
+    const g = mk({ ...NORMAL, temper: 'nhat' });
+    expect(g.S.known.temper).toBe(false);
+    g.act('look');
+    expect(g.S.known.temper).toBe(false);
+    g.S.newDays = 0; g.act('look');
+    expect(g.S.known.temper).toBe(true);
+    expect(g.S.log.some((e) => e.type === 'tip' && e.text.includes('nhát'))).toBe(true);
+  });
+
+  it('món khoái lộ ra khi cho ăn và được tính như món rất thích', () => {
+    const g = mk({ ...NORMAL, fav: 'tao' });
+    expect(g.S.known.fav).toBe(false);
+    const m0 = g.S.mood;
+    g.act('fresh', { food: 'tao' });
+    expect(g.S.known.fav).toBe(true);
+    expect(g.S.mood - m0).toBeGreaterThan(5);
+  });
+
+  it('loài nói không có trục lửa', () => {
+    const g = new Game({ seed: 9, storage: null }); g.newGame('sao', 'S');
+    expect(g.S.traits.fire).toBe('binh');
+    expect(g.S.known.fire).toBe(true);
+  });
+
+  it('tung tính cách không đổi dòng ngẫu nhiên chính', () => {
+    const a = new Game({ seed: 11, storage: null }); a.newGame('chaomao', 'A', 'truong', { traits: NORMAL });
+    const b = new Game({ seed: 11, storage: null }); b.newGame('chaomao', 'A');
+    expect(b.S.schedule).toEqual(a.S.schedule);
+    expect(b.S.known.temper).toBe(false);
   });
 });

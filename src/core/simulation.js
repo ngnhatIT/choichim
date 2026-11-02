@@ -6,6 +6,7 @@ import { MIX_DAYS } from '../config.js';
 import { stageOf } from '../data/stages.js';
 import { clamp, hourOf } from './util.js';
 import { catchIllness, stepIllness } from './illness.js';
+import { traitK, overFireAt } from '../data/traits.js';
 
 /** Mức chấp nhận thức ăn đang có trong máng (tính cả giai đoạn trộn dần). */
 export function feederAcceptance(S, sp) {
@@ -29,7 +30,7 @@ export function stepMinute(S, ctx) {
   const st = stageOf(S);
 
   // Ăn uống
-  S.hunger -= sp.metab * st.metabK * (S.sick ? 0.7 : 1); // chim non đang lớn đói nhanh hơn
+  S.hunger -= sp.metab * st.metabK * traitK(S, 'metabK') * (S.sick ? 0.7 : 1); // chim non đang lớn đói nhanh hơn
   const acc = feederAcceptance(S, sp);
   if (S.hunger < 85 && S.feeder.amt > 0 && acc > 0) {
     const r = S.sick ? 0.5 : 1;
@@ -93,16 +94,16 @@ export function stepMinute(S, ctx) {
     if (S.newDays > 0 || (sp.shy && S.trust < 30)) S.mood += 0.035; else S.mood -= 0.03;
   }
   if (S.newDays > 0 && !S.covered) S.mood -= 0.025;
-  if (S.newDays > 0 && S.mood < 32) S.risk.nga_nuoc += 0.5;
+  if (S.newDays > 0 && S.mood < 32) S.risk.nga_nuoc += 0.5 * traitK(S, 'newK');
   S.mood += (55 - S.mood) * 0.0015;
 
   // Sức khỏe, độ sung
   if (!S.sick && S.hunger > 40 && S.water.level > 0 && S.water.clean > 40 && S.cage > 40) S.health += 0.025;
   stepIllness(S, ctx);
   if (S.molt) S.vigor -= 0.008 / st.featherMolt; // chim lâu năm thay lông mệt hơn
-  else if (!S.sick && S.health > 70 && S.mood > 55 && S.hunger > 40) S.vigor += 0.01 * st.vigorK * (S.vigor > 80 ? 0.25 : 1); // gần đỉnh lên chậm: không ép thì lửa không tự vọt
+  else if (!S.sick && S.health > 70 && S.mood > 55 && S.hunger > 40) S.vigor += 0.01 * st.vigorK * traitK(S, 'vigorK') * (S.vigor > 80 ? 0.25 : 1); // gần đỉnh lên chậm: không ép thì lửa không tự vọt
   // Quá lửa (ép mồi, giọng mồi dồn dập): chim nhảy loạn lồng, căng thẳng, lông mới dễ xoắn
-  if (S.vigor > 90) {
+  if (S.vigor > overFireAt(S)) { // chim lên lửa nhanh quá lửa sớm hơn
     S.mood -= 0.01; S.feather -= 0.003;
     if (!T.overFire) { T.overFire = true; ctx.log('warn', `${S.name} đang quá lửa: nhảy loạn lồng, đập cánh, hót gắt. Nên bớt mồi tươi và giọng mồi vài hôm, cho tắm để hạ lửa.`); }
   }

@@ -7,6 +7,7 @@ import { stageOf, isYoung } from '../data/stages.js';
 import { fireBand } from '../data/song.js';
 import { clamp, hourOf, isNight } from './util.js';
 import { catchIllness, prescribe, giveDose, sickPhase } from './illness.js';
+import { TRAITS, traitK, revealTrait } from '../data/traits.js';
 
 /**
  * Mỗi hành động: { blocked(S, sp) -> lý do | null, run(S, ctx, payload) -> số phút tiêu tốn }
@@ -43,6 +44,7 @@ export const ACTIONS = {
       const F = FOODS[food];
       const T = S.today;
       let [v, note] = sp.food[food];
+      if (food === S.traits?.fav && v === 1) { v = 2; revealTrait(S, ctx, 'fav', FOODS); } // món khoái của riêng con này
       const molted = S.molt && sp.moltAvoid.includes(food);
       if (molted) { v = -1; note = `Đang thay lông: không nên cho ${F.name.toLowerCase()}, lông mới dễ quăn, xấu.`; T.moltBad = true; }
       const full = S.hunger > 95;
@@ -57,7 +59,7 @@ export const ACTIONS = {
       else if (v === -1) { S.hunger += F.fill * 0.5; S.mood += 1; ctx.log('warn', `${F.name}: ${note}`); if (!molted) T.bad.push(F.name); }
       else if (v === 0) { S.hunger += F.fill * 0.3; ctx.log('info', `${F.name}: ${note}`); }
       else {
-        S.hunger += F.fill; S.mood += v === 2 ? 6 : 3;
+        S.hunger += F.fill; S.mood += v === 2 ? 6 : 3 * traitK(S, 'likeK');
         if (v === 2) { S.vigor += 2; S.trust += 1; }
         if (F.cat === 'fruit') T.fresh++;
         if (F.cat === 'protein' && !(food === 'sauquy' && isYoung(S))) { T.protein++; S.lastProtein = S.day; } // sâu quy không tính là mồi mềm cho chim non
@@ -183,12 +185,12 @@ export const ACTIONS = {
       const { sp } = ctx;
       S.today.talks++;
       if (S.newDays > 0) {
-        S.mood -= 6; S.trust += 1;
+        S.mood -= 6 * traitK(S, 'scareK'); S.trust += 1;
         ctx.log('warn', `${S.name} còn sợ, nép vào góc lồng. Chim mới về nên để yên vài ngày.`);
         return 15;
       }
       if (S.sick) { S.mood -= 2; ctx.log('warn', 'Chim đang mệt, chỉ nên để chim nghỉ ngơi.'); return 15; }
-      S.trust += sp.shy ? 2.5 : 4; S.mood += 4;
+      S.trust += (sp.shy ? 2.5 : 4) * traitK(S, 'trustK'); S.mood += 4;
       let m;
       if (sp.skill === 'song') {
         m = S.molt ? 'Đã trò chuyện nhẹ nhàng. Mùa thay lông không nên luyện giọng nặng.'
@@ -242,7 +244,15 @@ export const ACTIONS = {
   },
 
   look: {
-    run(S, ctx) { ctx.log('info', observe(S, ctx.sp)); return 5; },
+    run(S, ctx) {
+      ctx.log('info', observe(S, ctx.sp));
+      if (!S.lookDays.includes(S.day)) S.lookDays.push(S.day);
+      // Tính chim lộ dần: tính nết khi chim đã quen nhà, cách ăn sau vài ngày để ý, độ lửa khi đã nuôi gần một tuần
+      if (S.newDays === 0) revealTrait(S, ctx, 'temper');
+      if (S.lookDays.length >= 2) revealTrait(S, ctx, 'appetite');
+      if (S.day >= 5) revealTrait(S, ctx, 'fire');
+      return 5;
+    },
   },
 
   vet: {
@@ -292,6 +302,10 @@ export function observe(S, sp) {
   out.push(S.trust > 60 ? 'Chim dạn, đến gần khi bạn lại gần lồng.' : S.trust > 30 ? 'Chim đã bớt sợ người.' : 'Chim còn nhát, hay nép vào góc lồng.');
   if (sickPhase(S) === 'som') out.push(`${DISEASES[S.sick.type].early} Có dấu hiệu sớm của bệnh ${DISEASES[S.sick.type].name.toLowerCase()}. Đưa đi thú y lúc này bệnh nhẹ và mau khỏi hơn.`);
   if (sickPhase(S) === 'tri') out.push(`Đang uống thuốc trị ${DISEASES[S.sick.type].name.toLowerCase()}, còn ${S.sick.dosesLeft} ngày. Giữ chim ấm, yên tĩnh.`);
+  for (const axis of ['temper', 'appetite', 'fire']) {
+    const v = S.traits?.[axis];
+    if (S.known?.[axis] && v && v !== 'binh') out.push(`Chim ${TRAITS[axis][v].name}: ${TRAITS[axis][v].tip}`);
+  }
   const r = S.risk;
   if (r.tieu_chay > 40) out.push('Cảnh báo: vệ sinh thức ăn, nước uống đang kém, dễ sinh bệnh đường ruột.');
   if (r.cam_lanh > 40) out.push('Cảnh báo: chim hơi run, cần giữ ấm, tránh để ướt.');

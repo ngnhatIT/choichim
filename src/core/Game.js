@@ -4,6 +4,7 @@ import { EventBus } from './EventBus.js';
 import { moltDays } from '../data/stages.js';
 import { rollWeather, monthOf } from '../data/weather.js';
 import { createRng } from './rng.js';
+import { rollTraits } from '../data/traits.js';
 import { createState, migrateState } from './state.js';
 import { ACHIEVEMENTS, earnedAchievements, readAchievements, saveAchievements } from './achievements.js';
 import { stepMinute } from './simulation.js';
@@ -61,7 +62,11 @@ export class Game {
 
   /** opts: { mode: 'moi' | 'lau', region: 'bac' | 'trung' | 'nam', traits } (traits để test ép tính cách). */
   newGame(sp, name, stage = 'truong', opts = {}) {
-    this.S = createState({ sp, name, stage, mode: opts.mode, region: opts.region, startAt: this.now() });
+    const P = SPECIES[sp];
+    // RNG riêng cho tính cách để không xô lệch dòng ngẫu nhiên của thời tiết, sự kiện
+    const traits = opts.traits || rollTraits(createRng(this.seed + 1), P);
+    this.S = createState({ sp, name, stage, mode: opts.mode, region: opts.region, startAt: this.now(), traits });
+    this.S.known = { temper: false, appetite: false, fire: P.skill !== 'song', fav: !traits.fav };
     this.pending = null;
     this.S.weather = rollWeather(1, this.rng, this.S.region, monthOf(this.S, 1));
     scheduleDay(this.S, this.rng);
