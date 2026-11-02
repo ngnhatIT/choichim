@@ -164,7 +164,7 @@ void main() {
     this.hemi.groundColor.set('#6B5A3C').lerp(C('#8A5A3E'), day ? 1 - Math.min(1, elev * 3) : 0);
 
     // Mây: trời mát lác đác, nắng nóng quang, mưa phủ kín; sáng theo nắng, ửng cam lúc sớm chiều
-    this.uniforms.cloud.value = rain ? 0.92 : weather.hot ? 0.28 : 0.46;
+    this.uniforms.cloud.value = rain ? 0.92 : weather.hot ? 0.28 : weather.humid ? 0.8 : weather.cold ? 0.6 : 0.46; // nồm trời trắng đục, rét âm u
     const lit = 1 - night * 0.88;
     this.uniforms.cloudLit.value.set(rain ? '#B4BCC2' : '#FFFFFF').lerp(warm, day && !rain ? 0.55 * (1 - Math.min(1, elev * 2.5)) : 0).multiplyScalar(lit);
     this.uniforms.cloudDark.value.copy(top).lerp(C(rain ? '#5C666F' : '#C3CAD4'), 0.65).multiplyScalar(lit * (rain ? 0.8 : 1));

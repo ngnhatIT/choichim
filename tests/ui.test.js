@@ -42,4 +42,31 @@ describe('Giao diện - test khói', () => {
       expect(g.S.day).toBe(4);
     }
   });
+
+  it('chế độ lâu năm ẩn chỉ số, bong bóng; hiện dấu hiệu phụ; đổi về người mới thấy lại', () => {
+    const g = new Game({ seed: 3, storage: null });
+    const hud = new Hud(g, world, modals, audio);
+    g.bus.on('change', () => hud.render());
+    g.newGame('chaomao', 'T', 'truong', { mode: 'lau' });
+    g.S.water.clean = 30; g.S.water.level = 10; hud.render();
+    expect(document.body.classList.contains('lau')).toBe(true);
+    expect(document.querySelector('#needs').children.length).toBe(0);
+    expect(document.querySelector('#signs').textContent).toMatch(/đục/);
+    expect(document.querySelector('#cups').textContent).not.toMatch(/%/);
+    hud.setMode('moi');
+    expect(g.S.mode).toBe('moi');
+    expect(document.body.classList.contains('lau')).toBe(false);
+    expect(document.querySelector('#needs').children.length).toBeGreaterThan(0);
+  });
+
+  it('chim đang điều trị: có nút cho uống thuốc, bong bóng nhắc thuốc, thẻ đang điều trị', () => {
+    const g = new Game({ seed: 3, storage: null });
+    const hud = new Hud(g, world, modals, audio);
+    g.newGame('chaomao', 'T');
+    g.S.schedule = {}; g.S.risk.tieu_chay = 101; g.advance(1); g.act('vet');
+    g.S.sick.dosedToday = false; hud.render();
+    expect(document.querySelector('#actions [data-act="medicine"]')).toBeTruthy();
+    expect(document.querySelector('#needs [data-act="medicine"]')).toBeTruthy();
+    expect(document.querySelector('#tags').textContent).toMatch(/Đang điều trị/);
+  });
 });

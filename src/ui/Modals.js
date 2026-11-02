@@ -6,6 +6,7 @@ import { HANDBOOK, DISCLAIMER } from '../data/handbook.js';
 import { SONG_LEVELS } from '../data/song.js';
 import { STAGES, STAGE_ORDER, isYoung } from '../data/stages.js';
 import { MIX_DAYS, TOTAL_DAYS } from '../config.js';
+import { REGIONS } from '../data/weather.js';
 import { ACHIEVEMENTS, loadAchievements } from '../core/achievements.js';
 import { entryHtml } from './Hud.js';
 import { icon, esc, EVENT_ICON, PLACE_ICON, LOG_ICON } from './icons.js';
@@ -161,7 +162,7 @@ export class Modals {
   /* ---------- Bắt đầu ---------- */
   start({ saved, thumbs, onNew, onContinue }) {
     this.thumbs = thumbs || this.thumbs;
-    let pick = null, age = 'truong';
+    let pick = null, age = 'truong', region = 'trung', mode = 'moi';
     const cards = SPECIES_ORDER.map((k) => {
       const P = SPECIES[k];
       return `<article class="sp-card">
@@ -190,7 +191,16 @@ export class Modals {
         const A = STAGES[k];
         return `<button data-do="age" data-arg="${k}" aria-pressed="${k === age}"><span class="ci">${icon(ic[k])}</span><span><b>${A.name} <small>${A.age}</small></b><span class="d">${A.desc}</span></span>${icon('check', 'go')}</button>`;
       }).join('')}</div><div id="step4"></div>`);
-      nameStep($('#step4'));
+      optStep($('#step4'));
+    };
+    // Vùng (thời tiết theo mùa từng miền) và cách chơi: người mới thấy chỉ số, người chơi lâu năm tự đọc dấu hiệu
+    const optStep = (target) => {
+      const P = SPECIES[pick];
+      const rDesc = { bac: 'Đông rét, xuân nồm ẩm, hè nóng mưa rào.', trung: 'Thu đông mưa lạnh kéo dài, hè gió Lào nắng nóng.', nam: 'Hai mùa: mùa khô nắng nóng, mùa mưa rào chiều.' };
+      const modes = { moi: ['Người mới', 'Thấy thanh chỉ số, bong bóng nhắc việc và danh sách việc hôm nay.', 'chart'], lau: ['Người chơi lâu năm', 'Không có thanh chỉ số, không nhắc việc. Bạn tự đọc dấu hiệu của chim như người nuôi thật. Đổi lại được giữa ván.', 'eye'] };
+      target.innerHTML = `<div class="step"><h3>${icon('pin')}Nhà bạn ở miền nào?</h3><div class="choice regions">${Object.keys(REGIONS).map((k) => `<button data-do="region" data-arg="${k}" aria-pressed="${k === region}"><span class="ci">${icon('home')}</span><span><b>${REGIONS[k]}</b><span class="d">${rDesc[k]} Thời tiết theo tháng thật.</span></span>${icon('check', 'go')}</button>`).join('')}</div>
+        <h3>${icon('eye')}Bạn muốn chơi kiểu nào?</h3><div class="choice modes">${Object.keys(modes).map((k) => `<button data-do="mode" data-arg="${k}" aria-pressed="${k === mode}"><span class="ci">${icon(modes[k][2])}</span><span><b>${modes[k][0]}</b><span class="d">${modes[k][1]}</span></span>${icon('check', 'go')}</button>`).join('')}</div><div id="step5"></div></div>`;
+      nameStep($('#step5'), P);
     };
     const nameStep = (target = $('#step3')) => {
       const P = SPECIES[pick];
@@ -216,11 +226,13 @@ export class Modals {
         this.box.querySelectorAll('.ages button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
         $('#nm')?.focus();
       },
+      region: (k, btn) => { region = k; this.box.querySelectorAll('.regions button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn))); },
+      mode: (k, btn) => { mode = k; this.box.querySelectorAll('.modes button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn))); },
       wild: () => {
         $('#step3').innerHTML = `<div class="warnbox"><b>${icon('alert')}Lồng Tre không cho chọn lựa này.</b><p>Chim bẫy từ tự nhiên thường bị sốc, “ngã nước”, nhiều con chết trong những ngày đầu. Săn bắt, mua bán chim hoang dã trái phép là vi phạm pháp luật, có thể bị xử phạt hành chính hoặc truy cứu trách nhiệm hình sự. Mỗi con chim được mua là thêm một lý do để người ta tiếp tục giăng lưới.</p><button class="btn btn-primary" data-do="farm" style="margin-top:6px">${icon('home')}Chọn chim từ trại nuôi sinh sản</button></div>`;
         $('#step3 .btn').focus();
       },
-      go: () => { const n = ($('#nm')?.value || '').trim() || 'Chim'; this.close(); onNew(pick, n, age); },
+      go: () => { const n = ($('#nm')?.value || '').trim() || 'Chim'; this.close(); onNew(pick, n, age, { region, mode }); },
       continue: () => { this.close(); onContinue(); },
     }, { dismissible: false, cls: 'wide' });
   }

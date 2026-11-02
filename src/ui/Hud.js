@@ -1,7 +1,9 @@
 import { SPECIES } from '../data/species.js';
 import { STAPLES, FOODS } from '../data/foods.js';
 import { LOCATIONS } from '../data/locations.js';
-import { WEATHER } from '../data/weather.js';
+import { WEATHER, weatherName } from '../data/weather.js';
+import { TRAITS } from '../data/traits.js';
+import { sickPhase } from '../core/illness.js';
 import { DISEASES } from '../data/diseases.js';
 import { SONG_LEVELS, songLevel, fireBand } from '../data/song.js';
 import { stageOf, adultness, isYoung } from '../data/stages.js';
@@ -25,13 +27,13 @@ const STATS = [
 ];
 const GROUPS = [
   ['Ăn uống', ['staple', 'fresh', 'water']], ['Vệ sinh', ['clean', 'bath']], ['Chỗ treo lồng', ['sun', 'cover', 'move']],
-  ['Gắn bó', ['talk', 'tutor', 'look']], ['Khác', ['vet', 'sleep']], // không có "Chờ 30 phút": thời gian theo giờ thật, không tua
+  ['Gắn bó', ['talk', 'tutor', 'look']], ['Khác', ['vet', 'medicine', 'sleep']], // không có "Chờ 30 phút": thời gian theo giờ thật, không tua
 ];
-const KEYS = { staple: '1', fresh: '2', water: '3', clean: '4', bath: '5', sun: '6', cover: '7', move: '8', talk: '9', tutor: '0', look: 'Q', vet: 'Y', wait: 'C', sleep: 'N' };
+const KEYS = { staple: '1', fresh: '2', water: '3', clean: '4', bath: '5', sun: '6', cover: '7', move: '8', talk: '9', tutor: '0', look: 'Q', vet: 'Y', medicine: 'T', wait: 'C', sleep: 'N' };
 const BY_KEY = Object.fromEntries(Object.entries(KEYS).map(([id, k]) => [k, id]));
 const LABELS = {
   staple: 'Thay thức ăn chính', fresh: 'Cho ăn thêm', water: 'Thay nước', clean: 'Dọn lồng', bath: 'Cho tắm', move: 'Đổi chỗ treo',
-  tutor: 'Cho nghe giọng mồi', look: 'Quan sát kỹ', vet: 'Đưa đi thú y', wait: 'Chờ 30 phút', sleep: 'Cho chim ngủ',
+  tutor: 'Cho nghe giọng mồi', look: 'Quan sát kỹ', vet: 'Đưa đi thú y', medicine: 'Cho uống thuốc', wait: 'Chờ 30 phút', sleep: 'Cho chim ngủ',
 };
 const TREND = 5; // chênh lệch trong khoảng 1 giờ game đủ để hiện mũi tên
 const AFK_MS = 120000; // không thao tác 2 phút thì tự chuyển sang nghe chim
@@ -53,7 +55,9 @@ const COACH = {
 const PICK_OF = { staple: 'staple', water: 'water', clean: 'clean' }; // hành động → vật trong lồng để hiện chỉ số nổi
 // Nhu cầu hiện thành bong bóng trên đầu chim (như Tamagotchi): [hành động, nhãn, độ gấp (càng lớn càng gấp) hoặc 0]
 const NEEDS = [
-  ['vet', 'Chim đang ốm, nên đưa đi thú y', (S) => (S.sick ? 100 : 0)],
+  ['vet', 'Chim đang ốm, nên đưa đi thú y', (S) => (sickPhase(S) === 'ro' ? 100 : 0)],
+  ['medicine', 'Đến giờ cho chim uống thuốc', (S) => (sickPhase(S) === 'tri' && !S.sick.dosedToday ? 95 : 0)],
+  ['look', 'Chim có vẻ khác thường, quan sát kỹ', (S) => (sickPhase(S) === 'som' ? 80 : 0)],
   ['staple', 'Máng sắp hết thức ăn', (S) => (!S.feeder.type || S.feeder.amt < 15 ? 90 - S.hunger * 0.5 : 0)],
   ['water', 'Nước ít hoặc bẩn, cần thay', (S) => (S.water.level < 30 || S.water.clean < 40 ? 85 - Math.min(S.water.level, S.water.clean) * 0.5 : 0)],
   ['clean', 'Lồng bẩn, cần dọn', (S) => (S.cage < 40 ? 70 - S.cage * 0.5 : 0)],
@@ -97,6 +101,7 @@ export class Hud {
     $('#relaxBtn').innerHTML = icon('note') + '<span class="lbl">Nghe chim</span>';
     $('#relaxBtn').setAttribute('aria-label', 'Nghe chim hót');
     $('#relaxBtn').addEventListener('click', () => this.setRelax(true));
+    $('#modeBtn').addEventListener('click', () => this.game.S && this.setMode(this.game.S.mode === 'lau' ? 'moi' : 'lau'));
     this.initAfk();
     this.needsEl = $('#needs');
     this.needsEl.addEventListener('click', (e) => {
@@ -377,6 +382,28 @@ export class Hud {
     }
   }
 
+  /** Đổi chế độ chơi giữa ván: Người mới (thấy chỉ số, nhắc việc) hoặc Người chơi lâu năm (tự đọc dấu hiệu). */
+  setMode(mode) {
+    const S = this.game.S;
+    if (!S) return;
+    S.mode = mode;
+    this.game.log('info', mode === 'lau' ? 'Chuyển sang chế độ người chơi lâu năm: không còn thanh chỉ số, nhắc việc. Hãy nhìn chim, nhìn máng, cóng, khay và nghe tiếng hót.' : 'Chuyển sang chế độ người mới: hiện lại chỉ số và nhắc việc.');
+    this.game.bus.emit('change');
+    this.render();
+  }
+
+  syncMode(S) {
+    const lau = S.mode === 'lau';
+    if (this.modeLau === lau) return;
+    this.modeLau = lau;
+    document.body.classList.toggle('lau', lau);
+    const b = $('#modeBtn');
+    b.innerHTML = icon(lau ? 'eye' : 'chart') + `<span class="lbl">${lau ? 'Lâu năm' : 'Người mới'}</span>`;
+    b.setAttribute('aria-pressed', String(lau));
+    b.setAttribute('aria-label', lau ? 'Chế độ người chơi lâu năm, bấm để hiện lại chỉ số' : 'Chế độ người mới, bấm để chơi kiểu lâu năm (ẩn chỉ số)');
+    b.dataset.tip = lau ? 'Đang chơi kiểu lâu năm: tự đọc dấu hiệu. Bấm để hiện lại chỉ số' : 'Chơi kiểu lâu năm: ẩn chỉ số, tự đọc dấu hiệu của chim';
+  }
+
   /* ---------- Vẽ ---------- */
   render() {
     this.syncSound();
@@ -385,6 +412,7 @@ export class Hud {
     if (!S) return;
     const sp = SPECIES[S.sp];
     if (S !== this.lastS) { this.lastS = S; this.samples = []; }
+    this.syncMode(S);
     this.renderTop(S, sp);
     this.renderBird(S, sp);
     this.renderStats(S);
@@ -417,7 +445,7 @@ export class Hud {
       this.wxKey = S.weather;
       $('#wx').dataset.w = S.weather;
       $('#wxIc').innerHTML = icon(WEATHER_ICON[S.weather] || 'cloudsun');
-      $('#wxName').textContent = W.name;
+      $('#wxName').textContent = weatherName(S);
       $('#wxTemp').textContent = `${W.temp}°C`;
     }
     setText($('#who'), `${S.name} · ${sp.name}`);
@@ -430,17 +458,26 @@ export class Hud {
     const st = stageOf(S), young = S.stage === 'chuyen' && adultness(S.stage, S.day) < 1;
     setHtml($('#bcSp'), `${esc(sp.name)} · ${esc(young ? st.name : S.stage === 'chuyen' ? 'Vừa thay lông đầu' : st.name)}<i>${esc(sp.latin)}</i>`);
     const tags = [];
-    if (S.sick) tags.push(`<span class="tag sick">${icon('alert')}${esc(DISEASES[S.sick.type].name)}</span>`);
+    const ph = sickPhase(S); // ủ bệnh: chưa lộ tên bệnh, người chơi phải tự để ý dấu hiệu
+    if (ph === 'ro') tags.push(`<span class="tag sick">${icon('alert')}${esc(DISEASES[S.sick.type].name)}</span>`);
+    if (ph === 'tri') tags.push(`<span class="tag sick">${icon('vet')}Đang điều trị, còn ${S.sick.dosesLeft} ngày thuốc</span>`);
+    for (const axis of ['temper', 'appetite', 'fire']) {
+      const v = S.traits?.[axis];
+      if (S.known?.[axis] && v && v !== 'binh') tags.push(`<span class="tag trait" data-tip="${esc(TRAITS[axis][v].tip)}">${icon('bird')}${esc(TRAITS[axis][v].name)}</span>`);
+    }
+    if (S.known?.fav && S.traits?.fav) tags.push(`<span class="tag trait">${icon('fruit')}Mê ${esc(FOODS[S.traits.fav].name.toLowerCase())}</span>`);
     if (S.newDays > 0) tags.push(`<span class="tag new">${icon('leaf')}Mới về, còn ${S.newDays} ngày làm quen</span>`);
     if (S.molt) tags.push(`<span class="tag molt">${icon('feather')}Đang thay lông</span>`);
     if (S.t < S.singUntil) tags.push(`<span class="tag sing">${icon('note')}Đang hót</span>`);
     setHtml($('#tags'), tags.join(''));
     const sg = describeSigns(S, sp);
     const signs = $('#signs');
-    if (setHtml(signs, icon(sg.strong ? 'alert' : 'eye') + `<span>${sg.strong ? `<b>${esc(sg.strong)}.</b> ` : ''}${esc(sg.text)}</span>`)) signs.dataset.lv = sg.strong ? 'alert' : '';
+    const more = S.mode === 'lau' && sg.more?.length ? `<span class="s-more">${sg.more.map(esc).join(' ')}</span>` : ''; // chế độ lâu năm: đọc thêm dấu hiệu phụ thay cho thanh chỉ số
+    if (setHtml(signs, icon(sg.strong ? 'alert' : 'eye') + `<span>${sg.strong ? `<b>${esc(sg.strong)}.</b> ` : ''}${esc(sg.text)}${more}</span>`)) signs.dataset.lv = sg.strong ? 'alert' : '';
 
     const f = S.feeder;
-    const feed = f.type ? `${STAPLES[f.type].name}, còn ${Math.round(f.amt)}%${f.mixFrom ? ` (đang trộn dần, còn ${f.mixLeft} ngày)` : ''}${f.days ? ' (đã cũ)' : ''}` : 'Trống';
+    const amt = S.mode === 'lau' ? (f.amt > 70 ? 'còn đầy' : f.amt > 35 ? 'vơi nửa' : f.amt > 0 ? 'sắp hết' : 'trống') : `còn ${Math.round(f.amt)}%`;
+    const feed = f.type ? `${STAPLES[f.type].name}, ${amt}${f.mixFrom ? ` (đang trộn dần, còn ${f.mixLeft} ngày)` : ''}${f.days ? ' (đã cũ)' : ''}` : 'Trống';
     const fresh = S.fresh ? `${FOODS[S.fresh.f].name}${S.fresh.spoiled ? ' (đã ôi)' : ` (${Math.floor(S.fresh.age / 60)} giờ)`}` : 'Không có';
     const rows = [
       ['bowl', 'Máng', feed], ['fruit', 'Đồ tươi', fresh],
@@ -509,7 +546,7 @@ export class Hud {
     const night = S.t >= SLEEP_FROM;
     const shown = new Set();
     const html = GROUPS.map(([label, ids]) => {
-      const list = ids.filter((id) => ACTIONS[id] && (id !== 'tutor' || sp.skill === 'song'));
+      const list = ids.filter((id) => ACTIONS[id] && (id !== 'tutor' || sp.skill === 'song') && (id !== 'medicine' || sickPhase(S) === 'tri'));
       if (!list.length) return '';
       return `<div role="group" aria-label="${label}"><div class="group-label" aria-hidden="true">${label}</div><div class="btns">${list.map((id) => {
         shown.add(id);
@@ -563,7 +600,7 @@ export class Hud {
   /** Chỉ số thay đổi do thao tác vừa làm: số nổi lên ngay tại chỗ (máng, cóng, khay hoặc đầu chim). */
   floatDeltas(id) {
     const S = this.game.S, prev = this.lastVals;
-    if (!S || !prev) return;
+    if (!S || !prev || S.mode === 'lau') return;
     const out = [];
     STATS.forEach(([label, , f], i) => {
       const d = Math.round(Math.max(0, Math.min(100, f(S))) - prev[i]);
@@ -586,7 +623,7 @@ export class Hud {
   coachStep() {
     if ((this.coachFrame = ((this.coachFrame || 0) + 1) % 4)) return; // đo bố cục 15 lần/giây là đủ
     const S = this.game.S, el = this.coach;
-    const off = !S || S.day > 1 || S.coachOff || S.over || this.modals.isOpen() || document.body.classList.contains('focus');
+    const off = !S || S.day > 1 || S.coachOff || S.mode === 'lau' || S.over || this.modals.isOpen() || document.body.classList.contains('focus');
     if (off) { if (!el.hidden) el.hidden = true; return; }
     let goals = [];
     try { goals = dailyGoals(S, SPECIES[S.sp]); } catch { goals = []; }
@@ -622,7 +659,7 @@ export class Hud {
   }
 
   renderNeeds(S) {
-    const list = S.over ? [] : NEEDS.map(([id, label, f]) => [id, label, f(S)]).filter(([id, , u]) => u > 0 && !this.game.blocked(id))
+    const list = S.over || S.mode === 'lau' ? [] : NEEDS.map(([id, label, f]) => [id, label, f(S)]).filter(([id, , u]) => u > 0 && !this.game.blocked(id))
       .sort((a, b) => b[2] - a[2]).slice(0, 3);
     setHtml(this.needsEl, list.map(([id, label, u]) => `<button class="need${u >= 80 ? ' urgent' : ''}" data-act="${id}" aria-label="${esc(label)}" data-tip="${esc(label)}">${icon(ACTION_ICON[id])}</button>`).join(''));
   }

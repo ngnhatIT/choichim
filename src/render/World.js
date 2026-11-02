@@ -19,6 +19,7 @@ import { Bird, stageModel } from './Bird.js';
 import { adultness, isYoung } from '../data/stages.js';
 import { Life } from './Life.js';
 import { noteSprite, shadowBlob } from './textures.js';
+import { sickPhase } from '../core/illness.js';
 
 const damp = (dt, rate) => 1 - Math.exp(-dt * rate);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -292,7 +293,7 @@ export class World {
     const c = this.cage;
     c.setFood(S.feeder.type ? STAPLES[S.feeder.type].color : null, S.feeder.amt / 100);
     c.setWater(S.water.level / 100, S.water.clean / 100);
-    c.setDirt(S.cage, S.sick?.type);
+    c.setDirt(S.cage, sickPhase(S) === 'ro' ? S.sick.type : undefined);
     c.setFresh(S.fresh ? FOODS[S.fresh.f].mesh : null, S.fresh?.spoiled);
     c.setCovered(S.covered);
     c.setMolt(S.molt);
@@ -379,20 +380,21 @@ export class World {
     f.sleep = night && (S.covered || rc != null);
     f.drowsy = night && !f.sleep;
     f.covered = S.covered;
-    f.sick = !!S.sick;
-    f.itch = S.sick?.type === 'ran_mat';
-    f.cold = S.sick?.type === 'cam_lanh' || (W.cold && !S.covered && S.wet > 0);
+    const ill = sickPhase(S) === 'ro' ? S.sick : null; // ủ bệnh, đang điều trị: chỉ xù lông nhẹ, chưa lim dim
+    f.sick = !!ill;
+    f.itch = ill?.type === 'ran_mat';
+    f.cold = ill?.type === 'cam_lanh' || (W.cold && !S.covered && S.wet > 0);
     f.molt = !!S.molt;
     f.wet = S.wet > 0;
     f.bathing = S.t < S.bathFx;
-    f.fluff = f.sick || f.wet || (W.cold && !S.covered) || f.drowsy;
+    f.fluff = !!S.sick || f.wet || (W.cold && !S.covered) || f.drowsy;
     f.eat = S.hunger < 85 && S.feeder.amt > 0 && feederAcceptance(S, sp) > 0;
     f.hungry = S.hunger < 20;
     f.peckish = S.hunger < 45;
     f.water = S.water.level > 4;
     f.fresh = !!S.fresh;
-    f.hot = (S.pos === 'san' && h >= 11 && h < 15) || S.sick?.type === 'say_nang';
-    f.nervous = S.newDays > 0 || S.mood < 35 || S.sick?.type === 'nga_nuoc';
+    f.hot = (S.pos === 'san' && h >= 11 && h < 15) || ill?.type === 'say_nang';
+    f.nervous = S.newDays > 0 || S.mood < 35 || ill?.type === 'nga_nuoc';
     f.active = S.covered || f.sick ? 0 : clamp01((S.mood - 35) / 50);
     f.young = isYoung(S);           // chim non: đói thì rung cánh xin ăn
     f.overFire = !S.covered && S.vigor > 90; // quá lửa: nhảy loạn, đập cánh

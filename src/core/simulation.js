@@ -1,10 +1,12 @@
-import { DISEASES, RISK_KEYS } from '../data/diseases.js';
+import { RISK_KEYS } from '../data/diseases.js';
 import { FOODS } from '../data/foods.js';
-import { WEATHER } from '../data/weather.js';
+import { WEATHER, sunWindow } from '../data/weather.js';
 import { songLevel } from '../data/song.js';
 import { MIX_DAYS } from '../config.js';
 import { stageOf } from '../data/stages.js';
 import { clamp, hourOf } from './util.js';
+import { catchIllness, stepIllness } from './illness.js';
+import { traitK, overFireAt } from '../data/traits.js';
 
 /** Mức chấp nhận thức ăn đang có trong máng (tính cả giai đoạn trộn dần). */
 export function feederAcceptance(S, sp) {
@@ -18,15 +20,6 @@ export function feederAcceptance(S, sp) {
   return now;
 }
 
-export function getSick(S, ctx, key) {
-  const d = DISEASES[key];
-  S.sick = { type: key, since: S.t };
-  S.sickCount++;
-  S.risk[key] = 0;
-  S.health -= 5;
-  ctx.log('bad', `${S.name} có dấu hiệu bệnh: ${d.name}. ${d.sign} Nguyên nhân thường gặp: ${d.cause} Nên đưa đi bác sĩ thú y sớm.`);
-}
-
 /** Tiến một phút trong game. Không đụng tới UI. */
 export function stepMinute(S, ctx) {
   const { sp, rng } = ctx;
@@ -37,7 +30,7 @@ export function stepMinute(S, ctx) {
   const st = stageOf(S);
 
   // Ăn uống
-  S.hunger -= sp.metab * st.metabK * (S.sick ? 0.7 : 1); // chim non đang lớn đói nhanh hơn
+  S.hunger -= sp.metab * st.metabK * traitK(S, 'metabK') * (S.sick ? 0.7 : 1); // chim non đang lớn đói nhanh hơn
   const acc = feederAcceptance(S, sp);
   if (S.hunger < 85 && S.feeder.amt > 0 && acc > 0) {
     const r = S.sick ? 0.5 : 1;
@@ -52,7 +45,7 @@ export function stepMinute(S, ctx) {
   // Đồ tươi để lâu sẽ ôi
   if (S.fresh) {
     S.fresh.age++;
-    if (!S.fresh.spoiled && S.fresh.age > 240) {
+    if (!S.fresh.spoiled && S.fresh.age > (W.hot || W.humid ? 150 : 240)) { // nóng, nồm: đồ tươi mau ôi
       S.fresh.spoiled = true;
       ctx.log('warn', `${FOODS[S.fresh.f].name} để trong lồng đã ôi, ruồi bắt đầu bu. Nên dọn lồng.`);
     }
@@ -62,8 +55,13 @@ export function stepMinute(S, ctx) {
   // Nắng
   if (inSun) {
     T.sunAll++;
-    if (h < 9.5) T.sunGood++;
-    else if (h < 11 || h >= 15) T.sunGood += 0.5;
+    const [s0, s1] = sunWindow(W); // trời rét: nắng tốt từ 8 giờ, sớm hơn chỉ thêm lạnh
+    if (h >= s0 && h < s1) T.sunGood++;
+    else if (h >= s1 && (h < 11 || h >= 15)) T.sunGood += 0.5;
+    if (W.key === 'ret' && h < 7.5) {
+      S.risk.cam_lanh += 0.3;
+      if (!T.coldSun) { T.coldSun = true; ctx.log('warn', 'Trời rét, sáng sớm chưa có nắng ấm mà gió lạnh: đợi khoảng 8 giờ nắng lên rồi hẵng mang chim ra.'); }
+    }
     if (h >= 11 && h < 15) { T.heat++; S.risk.say_nang += W.hot ? 5 : 3; S.mood -= 0.05; }
     if (T.sunAll > sp.sun[1] + 20) S.mood -= 0.04;
   }
@@ -83,7 +81,7 @@ export function stepMinute(S, ctx) {
 
   // Vệ sinh kém sinh nguy cơ bệnh
   if (S.water.clean < 35) S.risk.tieu_chay += (35 - S.water.clean) / 40;
-  if (S.cage < 30) S.risk.ran_mat += (30 - S.cage) / 40;
+  if (S.cage < 30) S.risk.ran_mat += ((30 - S.cage) / 40) * (W.humid ? 1.5 : 1); // nồm ẩm, mạt sinh sôi nhanh
   if (S.water.level <= 0) {
     if (!S.dryWarned) { S.dryWarned = true; ctx.log('bad', 'Cóng nước đã cạn! Chim nhỏ mất nước rất nhanh, thay nước ngay.'); }
     S.health -= 0.08; S.mood -= 0.08;
@@ -96,18 +94,16 @@ export function stepMinute(S, ctx) {
     if (S.newDays > 0 || (sp.shy && S.trust < 30)) S.mood += 0.035; else S.mood -= 0.03;
   }
   if (S.newDays > 0 && !S.covered) S.mood -= 0.025;
-  if (S.newDays > 0 && S.mood < 32) S.risk.nga_nuoc += 0.5;
+  if (S.newDays > 0 && S.mood < 32) S.risk.nga_nuoc += 0.5 * traitK(S, 'newK');
   S.mood += (55 - S.mood) * 0.0015;
 
   // Sức khỏe, độ sung
   if (!S.sick && S.hunger > 40 && S.water.level > 0 && S.water.clean > 40 && S.cage > 40) S.health += 0.025;
-  if (S.sick) {
-    S.health -= DISEASES[S.sick.type].dmg; S.mood -= 0.03; S.vigor -= 0.03;
-  }
+  stepIllness(S, ctx);
   if (S.molt) S.vigor -= 0.008 / st.featherMolt; // chim lâu năm thay lông mệt hơn
-  else if (!S.sick && S.health > 70 && S.mood > 55 && S.hunger > 40) S.vigor += 0.01 * st.vigorK * (S.vigor > 80 ? 0.25 : 1); // gần đỉnh lên chậm: không ép thì lửa không tự vọt
+  else if (!S.sick && S.health > 70 && S.mood > 55 && S.hunger > 40) S.vigor += 0.01 * st.vigorK * traitK(S, 'vigorK') * (S.vigor > 80 ? 0.25 : 1); // gần đỉnh lên chậm: không ép thì lửa không tự vọt
   // Quá lửa (ép mồi, giọng mồi dồn dập): chim nhảy loạn lồng, căng thẳng, lông mới dễ xoắn
-  if (S.vigor > 90) {
+  if (S.vigor > overFireAt(S)) { // chim lên lửa nhanh quá lửa sớm hơn
     S.mood -= 0.01; S.feather -= 0.003;
     if (!T.overFire) { T.overFire = true; ctx.log('warn', `${S.name} đang quá lửa: nhảy loạn lồng, đập cánh, hót gắt. Nên bớt mồi tươi và giọng mồi vài hôm, cho tắm để hạ lửa.`); }
   }
@@ -116,7 +112,7 @@ export function stepMinute(S, ctx) {
   for (const k of RISK_KEYS) S.risk[k] *= 0.999;
   if (!S.sick) {
     // Chim non, chim già sức đề kháng kém: phát bệnh ở ngưỡng nguy cơ thấp hơn (chim non đặc biệt sợ lạnh)
-    for (const k of RISK_KEYS) if (S.risk[k] * st.riskK * (k === 'cam_lanh' ? st.coldK : 1) >= 100) { getSick(S, ctx, k); break; }
+    for (const k of RISK_KEYS) if (S.risk[k] * st.riskK * (k === 'cam_lanh' ? st.coldK : 1) >= 100) { catchIllness(S, ctx, k); break; }
   }
 
   // Hót: chỉ khi khỏe, sung, vui, dạn người. Giọng càng lên cấp hót càng thường, hiệp càng dài;

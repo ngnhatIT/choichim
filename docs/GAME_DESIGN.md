@@ -28,7 +28,37 @@ Dạy người mới nuôi chim những nguyên tắc chăm sóc quan trọng nh
 
 ## Mô hình bệnh
 
-Mỗi bệnh có một bộ đếm nguy cơ. Điều kiện xấu cộng dồn nguy cơ theo phút; nguy cơ tự giảm 0,1% mỗi phút; vượt 100 thì phát bệnh. Cách này giúp hệ quả có tính nhân quả và tái lập được (không ngẫu nhiên thuần), người chơi có thể suy ra nguyên nhân. Bệnh trừ máu theo phút và chỉ khỏi khi đưa đi thú y. "Quan sát kỹ" cho thấy cảnh báo khi nguy cơ trên 30–40.
+Mỗi bệnh có một bộ đếm nguy cơ. Điều kiện xấu cộng dồn nguy cơ theo phút; nguy cơ tự giảm 0,1% mỗi phút; vượt 100 thì nhiễm bệnh. Cách này giúp hệ quả có tính nhân quả và tái lập được (không ngẫu nhiên thuần), người chơi có thể suy ra nguyên nhân. "Quan sát kỹ" cho thấy cảnh báo khi nguy cơ trên 30–40.
+
+Diễn tiến (`core/illness.js`, `S.sick.phase`):
+- Ủ bệnh (`som`, 180 phút mô phỏng, đêm không tính): chưa ghi tên bệnh, chỉ có dấu hiệu sớm riêng từng bệnh (`DISEASES[k].early`), trừ máu 0,3 lần, chim không hót. Đã tính là bị bệnh (`sickCount`).
+- Phát rõ (`ro`): nhật ký tên bệnh, máu −5, trừ máu đủ theo phút. Ăn đồ độc vào thẳng giai đoạn này.
+- Thú y kê liệu trình và cho liều đầu: bắt sớm 3 liều; phát rõ theo `DISEASES[k].course`; tái bệnh thêm 2 liều. Đang điều trị (`tri`) không mất máu, ăn uống đủ thì hồi dần. Đi thú y lúc đang điều trị không rút ngắn liệu trình.
+- "Cho uống thuốc" (`medicine`, phím T) mỗi ngày một liều; đủ liều thì khỏi. Cuối ngày chưa uống: ✗ "Bỏ liều thuốc", bệnh tái về giai đoạn phát rõ, phải đi thú y lại.
+
+## Chế độ chơi
+
+`S.mode`: Người mới (`moi`, mặc định) thấy thanh chỉ số, bong bóng nhu cầu, hướng dẫn và "Việc hôm nay". Người chơi lâu năm (`lau`) ẩn những thứ đó; dòng dấu hiệu dưới thẻ chim hiện thêm tối đa 2 dấu hiệu phụ (`describeSigns().more`: nước đục, khay đầy, máng vơi, đồ tươi ôi, lông xơ, chim chưa hót), máng ăn ghi bằng chữ. Bảng chấm điểm cuối ngày vẫn giữ. Đổi được giữa ván bằng nút trên thanh trên cùng.
+
+## Thời tiết theo vùng, tháng (`data/weather.js`)
+
+Người chơi chọn miền (Bắc, Trung, Nam; mặc định Trung) khi đón chim. Tháng của mỗi ngày game tính từ ngày đón chim (`S.startAt`). Sáu kiểu: mát, nắng nóng (miền Trung tháng 5–8 gọi là gió Lào), mưa lạnh, rét khô, nồm ẩm, mưa rào; xác suất theo bảng `WEATHER_TABLE` (ước lượng theo khí hậu, không phải số đo). Ngày 1 lấy kiểu dịu phổ biến nhất của tháng.
+- Rét: như mưa lạnh về nguy cơ cảm; nắng tốt dời sang 8:00–10:30, phơi trước 7:30 thêm nguy cơ cảm.
+- Nồm: ngày nồm chưa đổ cám mới thì ✗ "Cám để qua ngày nồm"; đồ tươi ôi sau 150 phút (nắng nóng cũng vậy); rận mạt từ lồng bẩn ×1,5; sự kiện "Trời nồm ẩm" chỉ xảy ra ngày nồm hoặc mưa.
+- Mưa rào: không phơi nắng, tắm vẫn được.
+
+## Tính cách chim (`data/traits.js`)
+
+Mỗi con tung khi đón (RNG riêng theo seed, không xô lệch thời tiết, sự kiện): tính nết nhát / bình thường / dạn, cách ăn kén / bình thường / ham, độ lửa chậm / vừa / nhanh (chỉ loài hót), và một món khoái. Tỉ lệ mỗi trục 25 / 50 / 25.
+
+| Trục | Ảnh hưởng |
+|---|---|
+| Tính nết | Thân thiết khi trò chuyện ×0,6 / ×1,4; hoảng khi bị làm phiền lúc mới về ×1,5 / ×0,6; nguy cơ ngã nước ×1,4 / ×0,6 |
+| Cách ăn | Tốc độ đói ×0,9 / ×1,15; vui khi ăn món hợp ×0,5 / ×1,3 |
+| Độ lửa | Sung tăng ×0,7 / ×1,6; lên lửa nhanh thì quá lửa từ 85 thay vì 90 |
+| Món khoái | Món chim ăn được (v = 1) tính như món rất thích |
+
+Người chơi nhận ra dần: tính nết ở lần "Quan sát kỹ" đầu tiên khi hết thời chim mới về, cách ăn khi đã quan sát ở hai ngày khác nhau, độ lửa khi quan sát từ ngày 5, món khoái khi lần đầu cho ăn món đó. Mỗi lần nhận ra có nhật ký mẹo chăm hợp tính; tính đã biết hiện thành thẻ trên thẻ chim.
 
 ## Giọng hót và giọng mồi
 
@@ -83,7 +113,7 @@ Lưu qua nhiều ván trong localStorage `longtre-achievements-v1` (`{ got: { id
 
 ## Bản lưu
 
-`Game.load` bổ sung mọi trường còn thiếu (trường mới của trạng thái, của `today`, nguy cơ bệnh) bằng giá trị mặc định nên bản lưu cũ vẫn mở và chơi tiếp được.
+`Game.load` bổ sung mọi trường còn thiếu (trường mới của trạng thái, của `today`, nguy cơ bệnh, tính cách; bản lưu cũ: chế độ người mới, miền Trung, bệnh đang có coi là đã phát rõ) bằng giá trị mặc định nên bản lưu cũ vẫn mở và chơi tiếp được.
 
 ## Các bài học cốt lõi gắn vào cơ chế
 

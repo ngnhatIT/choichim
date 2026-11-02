@@ -10,5 +10,5 @@ export default defineConfig(({ mode }) => ({
     outDir: mode === 'single' ? 'dist-single' : 'dist',
     chunkSizeWarningLimit: 1500,
   },
-  test: { environment: 'node', include: ['tests/**/*.test.js'] },
+  test: { environment: 'node', include: ['tests/**/*.test.js'], setupFiles: ['tests/setup.js'] },
 }));

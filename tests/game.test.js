@@ -1,8 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { Game } from '../src/core/Game.js';
 import { dailyGoals } from '../src/core/goals.js';
+import { describeSigns } from '../src/core/actions.js';
+import { SPECIES } from '../src/data/species.js';
 import { ACHIEVEMENTS, loadAchievements, readAchievements } from '../src/core/achievements.js';
 import { songLevel } from '../src/data/song.js';
+import { WEATHER, WEATHER_TABLE, rollWeather, monthOf } from '../src/data/weather.js';
+import { createRng } from '../src/core/rng.js';
+import { HOUSEHOLD_EVENTS } from '../src/core/householdEvents.js';
+import { sickPhase } from '../src/core/illness.js';
 
 /** Người chơi mẫu: chăm đúng cách, chọn phương án tốt cho mọi sự kiện. */
 function playGoodDay(g, opts) {
@@ -23,6 +29,7 @@ function playGoodDay(g, opts) {
   g.advance(150); resolve();
   g.act('clean', { method: 'wet' }); resolve();
   if (S.sick) { g.act('vet'); resolve(); }
+  if (!g.blocked('medicine')) { g.act('medicine'); resolve(); }
   while (S.t < 18 * 60 && g.running) { g.advance(18 * 60 - S.t); resolve(); }
   if (g.running) { if (!S.covered) g.act('cover'); resolve(); }
   if (g.running) g.act('sleep');
@@ -30,7 +37,7 @@ function playGoodDay(g, opts) {
 
 function runCampaign(sp, opts, seed = 42, storage) {
   const g = new Game({ seed, storage });
-  g.newGame(sp, 'Test');
+  g.newGame(sp, 'Test', 'truong', { traits: { temper: 'binh', appetite: 'binh', fire: 'binh', fav: null } }); // cân bằng không phụ thuộc tính cách
   for (let i = 0; i < 14 && !g.S.over; i++) {
     playGoodDay(g, opts);
     if (g.pending?.type === 'report') g.nextDay();
@@ -493,5 +500,253 @@ describe('Thời gian thực: đồng hồ game theo giờ máy', () => {
     expect(g.blocked('water')).toMatch(/bận/);
     set(at(3, 8, 0)); g.sync();
     expect(g.blocked('water')).toBeNull();
+  });
+});
+
+describe('Lồng Tre - tùy chọn ván mới', () => {
+  it('ván mới nhận chế độ, vùng, mốc ngày; bản lưu cũ được bù mặc định', () => {
+    const g = new Game({ seed: 1, storage: null });
+    g.newGame('chaomao', 'A', 'truong', { mode: 'lau', region: 'bac' });
+    expect(g.S.mode).toBe('lau');
+    expect(g.S.region).toBe('bac');
+    expect(g.S.startAt).toBe(new Date(2026, 3, 15, 8, 0).getTime());
+    const old = JSON.parse(JSON.stringify(g.S));
+    for (const k of ['mode', 'region', 'startAt', 'traits', 'known', 'lookDays']) delete old[k];
+    g.load(old);
+    expect(g.S.mode).toBe('moi');
+    expect(g.S.region).toBe('trung');
+    expect(g.S.known.temper).toBe(true);
+  });
+});
+
+/** Tiến thời gian, tự chọn phương án đúng cho sự kiện trong nhà. */
+function adv(g, n) {
+  const end = g.S.t + n;
+  while (g.S.t < end && !g.S.over) {
+    while (g.pending?.type === 'event') g.chooseEvent(0);
+    if (!g.running) break;
+    g.advance(end - g.S.t);
+  }
+}
+function toNight(g) {
+  adv(g, Math.max(0, 18 * 60 - g.S.t));
+  while (g.pending?.type === 'event') g.chooseEvent(0);
+  if (g.running) g.act('sleep');
+  return g.pending?.report;
+}
+
+describe('Lồng Tre - thời tiết theo vùng, tháng', () => {
+  it('thời tiết theo vùng, tháng: chỉ ra kiểu trong bảng, ngày 1 dịu', () => {
+    const rng = createRng(5);
+    for (const r of ['bac', 'trung', 'nam']) for (let m = 1; m <= 12; m++) {
+      const keys = Object.keys(WEATHER_TABLE[r][m]);
+      for (let i = 0; i < 30; i++) expect(keys).toContain(rollWeather(2, rng, r, m));
+      const d1 = WEATHER[rollWeather(1, rng, r, m)];
+      expect(d1.rain || d1.hot).toBe(false);
+    }
+  });
+
+  it('tháng tính từ ngày đón chim, không từ giờ hiện tại', () => {
+    const S = { startAt: new Date(2026, 0, 30).getTime() };
+    expect(monthOf(S, 1)).toBe(1);
+    expect(monthOf(S, 3)).toBe(2);
+    expect(monthOf({ startAt: 0 }, 5)).toBe(4);
+  });
+
+  it('rét: nắng tốt dời sang 8:00–10:30', () => {
+    const sun = (from) => {
+      const g = new Game({ seed: 2, storage: null });
+      g.newGame('chaomao', 'R'); g.S.schedule = {}; g.S.weather = 'ret'; g.act('cover');
+      adv(g, from - g.S.t); g.act('sun'); adv(g, 25);
+      return g.S.today.sunGood;
+    };
+    expect(sun(7 * 60)).toBe(0);
+    expect(sun(8 * 60)).toBeGreaterThanOrEqual(20);
+  });
+
+  it('nồm, nóng: đồ tươi ôi sau 150 phút; trời mát thì chưa', () => {
+    const spoiled = (w) => {
+      const g = new Game({ seed: 2, storage: null });
+      g.newGame('chaomao', 'R'); g.S.schedule = {}; g.S.weather = w;
+      g.act('fresh', { food: 'chuoi' }); adv(g, 146);
+      return g.S.fresh.spoiled;
+    };
+    expect(spoiled('nom')).toBe(true);
+    expect(spoiled('nong')).toBe(true);
+    expect(spoiled('mat')).toBe(false);
+  });
+
+  it('ngày nồm chưa đổ cám mới thì bị phạt, đã đổ thì không', () => {
+    const night2 = (refill) => {
+      const g = new Game({ seed: 4, storage: null });
+      g.newGame('chaomao', 'N'); g.act('staple', { food: 'cm' }); toNight(g); g.nextDay();
+      g.S.weather = 'nom'; g.S.schedule = {};
+      if (refill) g.act('staple', { food: 'cm' });
+      return toNight(g).items.some((i) => i.label === 'Cám để qua ngày nồm');
+    };
+    expect(night2(false)).toBe(true);
+    expect(night2(true)).toBe(false);
+  });
+});
+
+describe('Lồng Tre - bệnh và liệu trình', () => {
+  const mk = () => { const g = new Game({ seed: 6, storage: null }); g.newGame('chaomao', 'B'); g.S.schedule = {}; g.act('staple', { food: 'cm' }); g.act('water'); return g; };
+  const catchNow = (g, key = 'tieu_chay') => { g.S.risk[key] = 101; adv(g, 1); };
+  const logged = (g, s) => g.S.log.some((e) => e.text.includes(s));
+
+  it('nguy cơ vượt ngưỡng: ủ bệnh trước, 180 phút sau mới phát rõ', () => {
+    const g = mk();
+    catchNow(g);
+    expect(sickPhase(g.S)).toBe('som');
+    expect(g.S.sickCount).toBe(1);
+    expect(logged(g, 'Tiêu chảy')).toBe(false);
+    adv(g, 179);
+    expect(sickPhase(g.S)).toBe('som');
+    adv(g, 1);
+    expect(sickPhase(g.S)).toBe('ro');
+    expect(logged(g, 'Tiêu chảy')).toBe(true);
+  });
+
+  it('ủ bệnh qua đêm vẫn đếm tiếp sáng hôm sau', () => {
+    const g = mk();
+    adv(g, 17 * 60 + 30 - g.S.t);
+    catchNow(g);
+    toNight(g); g.nextDay(); g.S.schedule = {};
+    expect(sickPhase(g.S)).toBe('som');
+    adv(g, 180 - 30 - 1);
+    expect(sickPhase(g.S)).toBe('som');
+    adv(g, 2);
+    expect(sickPhase(g.S)).toBe('ro');
+  });
+
+  it('thú y lúc ủ bệnh: 3 liều; cho uống đủ thì khỏi', () => {
+    const g = mk();
+    catchNow(g);
+    g.act('vet');
+    expect(sickPhase(g.S)).toBe('tri');
+    expect(g.S.sick.dosesLeft).toBe(2);
+    expect(toNight(g).items.some((i) => i.ok && i.label === 'Cho uống thuốc đúng liều')).toBe(true);
+    g.nextDay(); g.act('medicine'); expect(g.S.sick.dosesLeft).toBe(1);
+    toNight(g); g.nextDay(); g.act('medicine');
+    expect(g.S.sick).toBe(null);
+  });
+
+  it('bỏ một liều thì tái bệnh, đi thú y lại liệu trình dài hơn', () => {
+    const g = mk();
+    catchNow(g); adv(g, 180);
+    expect(sickPhase(g.S)).toBe('ro');
+    g.act('vet');
+    expect(g.S.sick.dosesLeft).toBe(4);
+    toNight(g); g.nextDay(); g.S.schedule = {};
+    expect(toNight(g).items.some((i) => i.ok === false && i.label === 'Bỏ liều thuốc')).toBe(true);
+    expect(sickPhase(g.S)).toBe('ro');
+    g.nextDay(); g.act('vet');
+    expect(g.S.sick.dosesLeft).toBe(6);
+  });
+
+  it('đi thú y khi đang điều trị không rút ngắn liệu trình', () => {
+    const g = mk();
+    catchNow(g); g.act('vet'); g.act('vet');
+    expect(sickPhase(g.S)).toBe('tri');
+    expect(g.S.sick.dosesLeft).toBe(2);
+  });
+
+  it('không cho uống thuốc khi không cần hoặc đã uống hôm nay', () => {
+    const g = mk();
+    expect(g.blocked('medicine')).toBeTruthy();
+    catchNow(g); g.act('vet');
+    expect(g.blocked('medicine')).toBeTruthy();
+  });
+
+  it('bản lưu cũ đang ốm mở ra là phát rõ, đi thú y được', () => {
+    const g = mk();
+    const old = JSON.parse(JSON.stringify(g.S));
+    old.sick = { type: 'cam_lanh', since: 400 };
+    g.load(old);
+    expect(sickPhase(g.S)).toBe('ro');
+    g.act('vet');
+    expect(sickPhase(g.S)).toBe('tri');
+  });
+
+  it('chim chết lúc đang điều trị vẫn ra màn chim chết', () => {
+    const g = mk();
+    catchNow(g); g.act('vet');
+    g.S.health = 1; g.S.water.level = 0; g.S.hunger = 0; g.S.feeder.amt = 0;
+    adv(g, 120);
+    expect(g.pending?.type).toBe('over');
+    expect(g.pending.sick).toBe(null); // đang điều trị bệnh không trừ máu: chết vì đói khát, không đổ cho bệnh
+  });
+});
+
+describe('Lồng Tre - tính cách chim', () => {
+  const NORMAL = { temper: 'binh', appetite: 'binh', fire: 'binh', fav: null };
+  const mk = (traits, sp = 'chaomao') => { const g = new Game({ seed: 8, storage: null }); g.newGame(sp, 'C', 'truong', { traits }); g.S.schedule = {}; return g; };
+
+  it('chim nhát tăng thân thiết chậm hơn chim dạn', () => {
+    const trust = (temper) => { const g = mk({ ...NORMAL, temper }); g.S.newDays = 0; for (let i = 0; i < 3; i++) g.act('talk'); return g.S.trust; };
+    expect(trust('nhat')).toBeLessThan(trust('binh'));
+    expect(trust('binh')).toBeLessThan(trust('dan'));
+  });
+
+  it('nhận ra tính nết ở lần quan sát đầu tiên sau thời chim mới về', () => {
+    const g = mk({ ...NORMAL, temper: 'nhat' });
+    expect(g.S.known.temper).toBe(false);
+    g.act('look');
+    expect(g.S.known.temper).toBe(false);
+    g.S.newDays = 0; g.act('look');
+    expect(g.S.known.temper).toBe(true);
+    expect(g.S.log.some((e) => e.type === 'tip' && e.text.includes('nhát'))).toBe(true);
+  });
+
+  it('món khoái lộ ra khi cho ăn và được tính như món rất thích', () => {
+    const g = mk({ ...NORMAL, fav: 'tao' });
+    expect(g.S.known.fav).toBe(false);
+    const m0 = g.S.mood;
+    g.act('fresh', { food: 'tao' });
+    expect(g.S.known.fav).toBe(true);
+    expect(g.S.mood - m0).toBeGreaterThan(5);
+  });
+
+  it('loài nói không có trục lửa', () => {
+    const g = new Game({ seed: 9, storage: null }); g.newGame('sao', 'S');
+    expect(g.S.traits.fire).toBe('binh');
+    expect(g.S.known.fire).toBe(true);
+  });
+
+  it('tung tính cách không đổi dòng ngẫu nhiên chính', () => {
+    const a = new Game({ seed: 11, storage: null }); a.newGame('chaomao', 'A', 'truong', { traits: NORMAL });
+    const b = new Game({ seed: 11, storage: null }); b.newGame('chaomao', 'A');
+    expect(b.S.schedule).toEqual(a.S.schedule);
+    expect(b.S.known.temper).toBe(false);
+  });
+});
+
+describe('Lồng Tre - dấu hiệu phụ', () => {
+  it('nước đục, khay đầy hiện thành dấu hiệu phụ; lồng sạch thì không có', () => {
+    const g = new Game({ seed: 3, storage: null }); g.newGame('chaomao', 'D'); g.S.schedule = {};
+    g.act('staple', { food: 'cm' }); g.act('water');
+    expect(describeSigns(g.S, SPECIES.chaomao).more).toEqual([]);
+    g.S.water.clean = 30; g.S.cage = 30; g.S.feather = 40;
+    const { more } = describeSigns(g.S, SPECIES.chaomao);
+    expect(more.length).toBe(2);
+    expect(more[0]).toMatch(/đục/);
+    expect(more[1]).toMatch(/Khay/);
+  });
+});
+
+describe('Lồng Tre - sửa sau review', () => {
+  it('mỗi ván mới trong cùng trang là một con chim tính khác', () => {
+    const g = new Game({ seed: 5, storage: null });
+    const seen = new Set();
+    for (let i = 0; i < 6; i++) { g.newGame('chaomao', 'X'); seen.add(JSON.stringify(g.S.traits)); }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it('sự kiện trời nồm không xảy ra ngày mưa rào mùa hè', () => {
+    const nom = HOUSEHOLD_EVENTS.find((e) => e.id === 'nom');
+    const S = { weather: 'rao', feeder: { amt: 50 } };
+    expect(nom.when(S)).toBe(false);
+    expect(nom.when({ ...S, weather: 'nom' })).toBe(true);
+    expect(nom.when({ ...S, weather: 'mua' })).toBe(true);
   });
 });

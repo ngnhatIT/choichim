@@ -1,8 +1,10 @@
 import { STAPLES } from '../data/foods.js';
 import { WEATHER } from '../data/weather.js';
+import { sunText } from './dayCycle.js';
 import { LATE_SLEEP, NEW_BIRD_DAYS } from '../config.js';
 import { feederAcceptance } from './simulation.js';
 import { isYoung } from '../data/stages.js';
+import { sickPhase } from './illness.js';
 
 /**
  * Việc nên làm hôm nay, khớp với cách chấm điểm cuối ngày (dayCycle.endDay).
@@ -31,7 +33,7 @@ export function dailyGoals(S, sp) {
   }
   if (!WEATHER[S.weather].rain) {
     add('sun', `Tắm nắng sớm ${sp.sun[0]}–${sp.sun[1]} phút`, T.sunGood >= sp.sun[0] && T.sunAll <= sp.sun[1] + 30 && T.heat < 10,
-      'Mang ra sân trước 9 giờ 30; tránh nắng gắt 11–15 giờ.');
+      `Mang ra sân trong khoảng ${sunText(WEATHER[S.weather])}; tránh nắng gắt 11–15 giờ.`);
   }
   const gap = isYoung(S) ? Math.max(2, sp.bathGap) : sp.bathGap; // chim non tắm thưa hơn
   if (T.baths > 0 || (S.day - S.lastBath > gap && !WEATHER[S.weather].cold)) {
@@ -43,6 +45,7 @@ export function dailyGoals(S, sp) {
   else if (S.sick) { /* không giao việc */ }
   else if (sp.skill === 'song') add('bond', 'Trò chuyện hoặc cho nghe giọng mồi', T.talks > 0 || T.tutor > 0, 'Chim dạn người, nghe giọng mồi đều đặn (tối đa 2 lần mỗi ngày) sẽ hót hay hơn.');
   else add('bond', 'Trò chuyện, dạy nói', T.talks > 0, 'Lặp lại một câu đều đặn mỗi ngày khi chim đã dạn người.');
+  if (sickPhase(S) === 'tri') add('medicine', 'Cho chim uống thuốc', S.sick.dosedToday, 'Uống đủ liệu trình, mỗi sáng một liều; bỏ liều dễ tái bệnh.');
   add('sleep', 'Trùm áo, cho ngủ trước 20:30', ended && S.covered && S.t <= LATE_SLEEP, 'Chim cần 10–12 tiếng ngủ yên tối; trùm áo lồng lúc chập tối.');
   return out;
 }

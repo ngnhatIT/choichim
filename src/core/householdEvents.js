@@ -208,8 +208,8 @@ export const HOUSEHOLD_EVENTS = [
     ],
   },
   {
-    id: 'nom', from: 8 * 60 + 30, to: 11 * 60, chance: 0.1,
-    when: (S) => !WEATHER[S.weather].hot && S.feeder.amt > 0,
+    id: 'nom', from: 8 * 60 + 30, to: 11 * 60, chance: 0.5, // chỉ xảy ra ngày nồm, ngày mưa
+    when: (S) => (WEATHER[S.weather].humid || S.weather === 'mua') && S.feeder.amt > 0, // mưa rào mùa hè không phải nồm
     title: 'Trời nồm ẩm',
     text: () => 'Trời nồm, nền nhà và tường đổ mồ hôi. Cám trong máng sờ thấy ẩm, bắt đầu vón cục.',
     choices: [
