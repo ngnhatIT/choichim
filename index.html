@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Lồng Tre: game giả lập nuôi chim cảnh 3D, học cách chăm chim đúng cách.">
+  <meta name="theme-color" content="#F9F4E8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1C1510" media="(prefers-color-scheme: dark)">
+  <title>Lồng Tre: giả lập nuôi chim cảnh 3D</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23A8381F'/%3E%3Cg fill='none' stroke='%23F7E4B8' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M16 5v2M9 25V15a7 7 0 0 1 14 0v10M13 25V9M19 25V9M16 25V8M7 25h18M9 18h14'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Fraunces:opsz,wght,SOFT@9..144,500..700,50&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="./assets/index-D1CthQuH.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DUE77Kgc.css">
+</head>
+<body>
+  <a class="skip" href="#actions">Tới bảng việc làm</a>
+  <div id="scene" class="scene" aria-label="Cảnh 3D: ngôi nhà và lồng chim"></div>
+
+  <header class="topbar" id="topbar">
+    <div class="brand">
+      <span class="seal" id="seal" aria-hidden="true"></span>
+      <span class="brand-txt"><span class="logo">Lồng Tre</span><span class="who" id="who">Giả lập nuôi chim cảnh</span></span>
+    </div>
+    <div class="status">
+      <div class="days" id="days" role="img" aria-label="Ngày 1 trên 14">
+        <span class="day-lbl" id="dayLbl"><span class="dl-w">Ngày </span>1<small>/14</small></span>
+        <span class="bamboo" id="bamboo"></span>
+      </div>
+      <div class="clock" id="clock" data-phase="day"><span id="clockIc"></span><time id="timeTxt">06:00</time><span class="paused" id="paused" hidden></span></div>
+      <div class="wx" id="wx"><span id="wxIc"></span><span><span class="wx-name" id="wxName">Mát</span> <b id="wxTemp">28°C</b></span></div>
+    </div>
+    <div class="controls">
+      <div class="ctl-group">
+        <div class="seg" role="group" aria-label="Tốc độ thời gian">
+          <button data-speed="0" aria-pressed="false" aria-label="Dừng thời gian" aria-keyshortcuts="Space" data-tip="Dừng (phím cách)"></button>
+          <button data-speed="1" aria-pressed="true" aria-label="Tốc độ chậm" data-tip="Chậm"></button>
+          <button data-speed="2" aria-pressed="false" aria-label="Tốc độ nhanh" data-tip="Nhanh"></button>
+        </div>
+        <span class="sep" aria-hidden="true"></span>
+        <div class="snd">
+          <button class="tb-btn" id="sndBtn" aria-expanded="false" aria-controls="sndPop" aria-keyshortcuts="M" data-tip="Âm thanh (M)"></button>
+          <div class="pop" id="sndPop" hidden>
+            <h3>Âm thanh</h3>
+            <label class="switch"><input type="checkbox" id="sndOn"><span class="sw-track" aria-hidden="true"></span><span>Bật tiếng chim và âm thanh</span></label>
+            <label class="vol"><span>Âm lượng</span><output id="sndOut" for="sndVol">80%</output><input type="range" id="sndVol" min="0" max="100" step="5"></label>
+            <p class="pop-hint"><kbd>M</kbd> bật hoặc tắt tiếng nhanh</p>
+          </div>
+        </div>
+        <button class="tb-btn" id="viewBtn" aria-keyshortcuts="V" data-tip="Đổi góc nhìn (V)"></button>
+        <button class="tb-btn" id="relaxBtn" aria-keyshortcuts="L" data-tip="Nghe chim hót, tạm dừng thời gian (L)"></button>
+        <button class="tb-btn" id="focusBtn" aria-keyshortcuts="H" aria-pressed="false" data-tip="Ngắm chim, ẩn bảng (H)"></button>
+        <button class="tb-btn" id="hbBtn" aria-keyshortcuts="S" data-tip="Sổ tay nuôi chim (S)"></button>
+        <button class="tb-btn" id="clubBtn" data-tip="Hội chim: hỏi đáp với nhóm bạn, lưu ván lên mạng"></button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Bảng điều khiển">
+    <button role="tab" id="tab-stats" data-tab="stats" aria-controls="pStats" aria-selected="false">Chỉ số</button>
+    <button role="tab" id="tab-actions" data-tab="actions" aria-controls="pActions" aria-selected="true">Việc làm</button>
+    <button role="tab" id="tab-log" data-tab="log" aria-controls="pLog" aria-selected="false">Nhật ký</button>
+  </nav>
+
+  <aside class="panel panel-stats" id="pStats" data-panel="stats" aria-label="Chỉ số của chim">
+    <div class="bird-card">
+      <div class="bc-img" id="bcImg"></div>
+      <div class="bc-txt"><h2 id="birdTitle">Chim của bạn</h2><p class="bc-sp" id="bcSp"></p></div>
+    </div>
+    <div class="tags" id="tags"></div>
+    <p class="signs" id="signs"></p>
+    <div class="stats" id="stats"></div>
+    <div class="voice" id="voice"></div>
+    <dl class="cups" id="cups"></dl>
+  </aside>
+
+  <aside class="panel panel-actions" id="pActions" data-panel="actions" aria-label="Việc làm">
+    <details class="goals" id="goals" open hidden>
+      <summary id="goalsSum"></summary>
+      <div class="progress" aria-hidden="true"><i id="goalsBar"></i></div>
+      <ul class="goal-list" id="goalList"></ul>
+    </details>
+    <button class="next-goal" id="nextGoal" type="button"></button>
+    <h2 class="sec-h">Việc cần làm</h2>
+    <div id="actions" class="groups" tabindex="-1"></div>
+    <p class="hint" id="hint"></p>
+  </aside>
+
+  <section class="panel panel-log" id="pLog" data-panel="log" aria-label="Nhật ký">
+    <div class="log-head"><h2 id="logH">Nhật ký</h2><button class="btn btn-sm btn-ghost" id="logAll">Xem tất cả</button></div>
+    <ol id="ticker" class="ticker"></ol>
+  </section>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="tip" id="tip" aria-hidden="true" hidden></div>
+  <div class="bubble" id="bubble" hidden></div>
+  <div class="needs" id="needs" role="group" aria-label="Chim đang cần"></div>
+  <div class="coach" id="coach" hidden><span class="c-ring" aria-hidden="true"></span><div class="c-card" role="status"><p id="coachTx"></p><button class="c-x" id="coachX">Tắt hướng dẫn</button></div></div>
+  <div class="floats" id="floats" aria-hidden="true"></div>
+  <button class="focus-pill" id="focusPill" aria-live="polite" hidden></button>
+  <div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="mTitle"><div class="modal" id="modal"></div></div>
+  <noscript>Lồng Tre cần JavaScript và WebGL để chạy.</noscript>
+</body>
+</html>
