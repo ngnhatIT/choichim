@@ -723,6 +723,21 @@ body:has(.overlay.show) .toasts { top: auto; bottom: calc(16px + env(safe-area-i
 }
 .hb-nav button:hover { border-color: var(--gold); }
 .hb-nav button[aria-current="true"] { background: var(--ink); color: var(--panel-solid); border-color: var(--ink); }
+
+/* Hội chim */
+.club-form { display: grid; gap: 8px; margin: 8px 0 18px; max-width: 640px; }
+.club-form .input { min-width: 0; width: 100%; }
+.club-form textarea { resize: vertical; font-weight: 400; }
+.club-form .btn { justify-self: start; }
+.club-list { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 6px; }
+.club-list button {
+  width: 100%; text-align: left; display: grid; gap: 2px; border: 1px solid var(--line); background: var(--raised);
+  border-radius: 12px; padding: 9px 13px; transition: border-color 0.16s;
+}
+.club-list button:hover { border-color: var(--gold); }
+.club-list span, .club-meta { color: var(--ink-2); font-size: 0.8rem; margin: 0; }
+.club-item { border-left: 3px solid var(--line-2); padding: 4px 0 4px 12px; margin: 10px 0 4px; }
+.club-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; max-width: 74ch; }
 .hb-sp { display: grid; grid-template-columns: 132px 1fr; gap: 18px; align-items: center; }
 .hb-sp .sp-stage { height: 104px; border-radius: 16px; }
 .hb-sp .sp-stage img { width: 132px; height: 104px; }

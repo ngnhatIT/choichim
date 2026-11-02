@@ -7,6 +7,8 @@ import { renderBirdThumbnails } from './render/thumbnails.js';
 import { SoundEngine } from './audio/SoundEngine.js';
 import { Hud } from './ui/Hud.js';
 import { Modals } from './ui/Modals.js';
+import { Club } from './ui/Club.js';
+import { pushSave } from './net/supabase.js';
 
 const game = new Game();
 const audio = new SoundEngine();
@@ -30,7 +32,13 @@ game.bus.on('event', (ev) => {
   audio.onAct('event:' + ev.id, null, game.S);
   world.onAct('event:' + ev.id);
 });
-game.bus.on('report', (rep) => { saveGame(game.S); modals.report(rep, { onNext: () => game.nextDay() }); });
+const club = new Club(modals, {
+  getState: () => game.S,
+  onLoad: (S) => { game.load(S); world.setView('close'); saveGame(game.S); },
+});
+document.getElementById('clubBtn').addEventListener('click', () => club.open());
+
+game.bus.on('report', (rep) => { saveGame(game.S); pushSave(game.S).catch(() => {}); modals.report(rep, { onNext: () => game.nextDay() }); });
 game.bus.on('final', (sum) => { clearGame(); modals.final(sum, { onAgain: showStart }); });
 game.bus.on('over', (info) => { clearGame(); modals.over(info, { onAgain: showStart }); });
 

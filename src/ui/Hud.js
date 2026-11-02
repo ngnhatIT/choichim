@@ -93,6 +93,8 @@ export class Hud {
     $('#paused').innerHTML = icon('pause') + 'Đang dừng';
     $('#hbBtn').innerHTML = icon('book') + '<span class="lbl">Sổ tay</span>';
     $('#hbBtn').setAttribute('aria-label', 'Sổ tay');
+    $('#clubBtn').innerHTML = icon('chatstar') + '<span class="lbl">Hội chim</span>';
+    $('#clubBtn').setAttribute('aria-label', 'Hội chim');
     $('#focusBtn').innerHTML = icon('bird') + '<span class="lbl">Ngắm chim</span>';
     $('#focusBtn').setAttribute('aria-label', 'Ngắm chim, ẩn các bảng');
     $('#focusBtn').addEventListener('click', () => this.toggleFocus());
