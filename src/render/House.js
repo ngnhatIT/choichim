@@ -1,12 +1,20 @@
 import * as THREE from 'three';
 import {
-  bananaLeaf, brickPaving, encausticTile, grass, leafy, palmFrond, plaster, roofTiles, terracottaFloor, wood, woodPanel,
+  bananaLeaf, brickPaving, encausticTile, grass, leafy, palmFrond, plaster, roofTiles, terracottaFloor, waterNormal, wood, woodPanel,
 } from './textures.js';
 
-const FLOOR_Y = 0.15;
+const FLOOR_Y = 0.45; // nền nhà rường đắp cao, lên bằng bậc tam cấp
 export { FLOOR_Y };
 
-const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, ...extra });
+// Vân nổi lấy luôn từ ảnh màu (chỗ tối lõm: mạch vữa, thớ gỗ, rãnh ngói); vật cắt alpha (lá) thì
+// không, thay vào đó mép lá mịn nhờ alpha-to-coverage trên MSAA
+const std = (color, extra = {}) => new THREE.MeshStandardMaterial({
+  color, roughness: 0.8, ...(extra.map ? (extra.alphaTest ? { alphaToCoverage: true } : { bumpMap: extra.map, bumpScale: 1.4 }) : {}), ...extra,
+});
+// Mặt nước: gợn sóng trôi chậm, bóng loáng, hơi trong để thấy cá
+const waterMat = (color) => new THREE.MeshPhysicalMaterial({
+  color, roughness: 0.03, ior: 1.33, normalMap: waterNormal(), normalScale: new THREE.Vector2(0.4, 0.4), transparent: true, opacity: 0.88,
+});
 
 function box(w, h, d, material, x, y, z, { cast = true, receive = true } = {}) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
@@ -23,8 +31,19 @@ function sph(r, material, x, y, z, seg = 12) {
   m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
   return m;
 }
-// Tán lá: dùng chung một khối cầu, co giãn theo từng chùm
-const BLOB = new THREE.IcosahedronGeometry(1, 2);
+// Tán lá: dùng chung một khối cầu méo lồi lõm (không tròn trịa), co giãn theo từng chùm.
+// Độ méo tính theo hướng nên các đỉnh trùng nhau dời như nhau, mặt không hở; pháp tuyến giữ hướng tâm cho tán mềm.
+const BLOB = (() => {
+  const g = new THREE.IcosahedronGeometry(1, 3), p = g.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).normalize();
+    const d = 1 + 0.11 * Math.sin(v.x * 5 + 1.3) * Math.sin(v.y * 4 + 0.4) * Math.sin(v.z * 6 + 2.1) + 0.05 * Math.sin(v.x * 13 + v.z * 9) * Math.sin(v.y * 11);
+    p.setXYZ(i, v.x * d, v.y * d, v.z * d);
+  }
+  return g;
+})();
+// Vân lá lốm đốm + bump: tán thấy rõ từng chùm lá, không phẳng lì
+const foliage = (color) => std(color, { map: leafy('#D8D8D8', [5, 3]), roughness: 0.72 });
 function blob(r, material, x, y, z, sy = 0.8) {
   const m = new THREE.Mesh(BLOB, material);
   m.position.set(x, y, z); m.scale.set(r, r * sy, r); m.rotation.y = Math.random() * 6;
@@ -40,15 +59,67 @@ function leafGeo(w, len, droop) {
   return g;
 }
 
-// Nhà rường: trục x như cũ, mặt trước nhìn ra +z
-const XL = -5.6, XR = 3.6, ZB = -2.95, ZF = 1.7; // mép nhà, hàng cột hiên
-const EAVE = { z: 2.45, y: FLOOR_Y + 2.85 }, RIDGE = { z: -0.6, y: FLOOR_Y + 4.8 };
-const ROOF_X = (XL + XR) / 2, ROOF_W = XR - XL + 1.1;
+/** Khối hộp đặt dọc đoạn a → b (xà, kèo, bờ chảy, đầu đao). */
+function beamBetween(a, b, w, h, material) {
+  const va = new THREE.Vector3(...a), vb = new THREE.Vector3(...b);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, va.distanceTo(vb)), material);
+  m.position.copy(va).add(vb).multiplyScalar(0.5); m.lookAt(vb);
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
 
 /**
- * Nhà vườn Huế cắt lớp nhìn từ phía trước, trải theo trục x:
- * sân (x < -5.6) | hiên chái trái (-5.6..-1.2) | gian giữa thờ tự (-1.2..3.6) | nhà bếp (3.6..7.6)
- * Quanh nhà: sân gạch, bể cạn non bộ, bình phong, hàng chè tàu, cổng trụ, cau, chuối, mít, thanh trà, giếng.
+ * Mặt mái từ các đa giác phẳng: faces = [[đỉnh...], (đỉnh) => uv theo mét]. Tự đảo chiều tam giác cho mặt
+ * trên nhìn lên (down = false) hoặc mặt dưới nhìn xuống (down = true, làm ván lót, đòn tay thấy từ trong nhà).
+ */
+function roofGeo(faces, down = false) {
+  const pos = [], uv = [], a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  for (const [pts, f] of faces) for (let i = 1; i < pts.length - 1; i++) {
+    let tri = [pts[0], pts[i], pts[i + 1]];
+    a.fromArray(tri[0]); b.fromArray(tri[1]).sub(a); c.fromArray(tri[2]).sub(a);
+    if ((b.cross(c).y > 0) === down) tri = [tri[0], tri[2], tri[1]];
+    for (const p of tri) { pos.push(...p); uv.push(...f(p)); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Mái bốn mái: hai mái dài trước sau, hai mái chái tam giác ở hai đầu hồi, cùng độ dốc. */
+function hipRoofGeo(x0, x1, z0, z1, y, pitch, down = false) {
+  const h = (z0 - z1) / 2, rz = (z0 + z1) / 2, ry = y + h * pitch, k = Math.hypot(1, pitch);
+  const A = [x0, y, z0], B = [x1, y, z0], C = [x1, y, z1], D = [x0, y, z1], E = [x0 + h, ry, rz], F = [x1 - h, ry, rz];
+  return roofGeo([
+    [[A, B, F, E], (p) => [p[0], (z0 - p[2]) * k]],
+    [[C, D, E, F], (p) => [-p[0], (p[2] - z1) * k]],
+    [[D, A, E], (p) => [p[2], (p[0] - x0) * k]],
+    [[B, C, F], (p) => [-p[2], (x1 - p[0]) * k]],
+  ], down);
+}
+
+// Nhà rường 3 gian 2 chái, đối xứng qua trục cổng - bình phong - bể cạn (x = AX), mặt tiền nhìn ra +z
+const AX = -1.0;
+const BAYS = [2.0, 2.6, 3.0, 2.6, 2.0]; // chái trái, gian trái, gian giữa, gian phải, chái phải
+const XS = BAYS.reduce((a, w) => [...a, a[a.length - 1] + w], [AX - BAYS.reduce((s, w) => s + w, 0) / 2]); // 6 hàng vì
+const XL = XS[0], XR = XS[5];
+const ZF = 2.0, ZW = 0.2, ZB = -4.0; // hàng cột hiên, vách mặt tiền (cột quân trước), vách hậu (cột quân sau)
+const RZ = (ZW + ZB) / 2, ZC = [RZ + 1.0, RZ - 1.0]; // đường nóc, hai hàng cột cái
+const PITCH = 0.85, RIDGE_Y = FLOOR_Y + 5.2, WALL_H = 3.25; // mái chính dốc ~40°
+const mainY = (z) => RIDGE_Y - Math.abs(z - RZ) * PITCH;
+const EAVE = { f: RZ + 2.7, b: RZ - 2.7, x0: XL - 0.5, x1: XR + 0.5 }; // mép mái chính
+const EAVE_Y = mainY(EAVE.f);
+// Mái hiên thấp, thoải, tách tầng dưới mái chính như nhà rường Huế
+const HIEN = { y0: FLOOR_Y + 2.85, slope: 0.28, z1: ZF + 0.6 };
+const hienY = (z) => HIEN.y0 - (z - ZW) * HIEN.slope;
+const KITCHEN = { x0: 6.2, x1: 9.2, zb: -5.2, zf: -1.2, h: 2.6 };
+
+/**
+ * Nhà vườn Huế: nhà rường ba gian hai chái trên nền cao, bậc tam cấp giữa, hiên chạy suốt mặt tiền.
+ * Trục đối xứng x = -1: cổng - bình phong - bể cạn non bộ - sân gạch - gian giữa thờ tự.
+ * Theo x: chái trái (-7.1..-5.1) | gian trái (..-2.5) | gian giữa (..0.5) | gian phải (..3.1) | chái phải (..5.1).
+ * Nhà ngang làm bếp tách riêng phía sau bên phải. Quanh nhà: chè tàu, cau, chuối, mít, thanh trà, giếng.
  */
 export class House {
   constructor() {
@@ -57,33 +128,37 @@ export class House {
     this.emissive = [];
     this.smoke = [];
     this.sway = [];
-    const G = this.group;
+    this.wetMats = [];
+    const G = this.group, F = FLOOR_Y;
 
-    // Mặt đất, sân gạch, lối vào cổng
+    // Mặt đất, sân gạch trước nhà, lối ra cổng
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(70, 70), std('#ffffff', { map: grass() }));
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
     G.add(ground);
-    this.plane(14.5, 9.6, brickPaving([7, 4.8]), -2.6, 0.006, 1.5);
-    this.plane(1.8, 3.0, brickPaving([1, 1.5]), -1.0, 0.006, 7.8);
+    const pz0 = ZB - 0.4, pz1 = ZF + 0.4; // mép nền
+    this.wetMats.push(this.plane(16, 5.1, brickPaving([8, 2.55]), AX, 0.006, pz1 + 2.55).material);
+    this.wetMats.push(this.plane(1.8, 2.2, brickPaving([1, 1.1]), AX, 0.006, 8.4).material);
 
-    // Nền nhà: bó vỉa gạch, lát gạch Bát Tràng ở hiên, gạch bông gian giữa, gạch đất bếp
-    G.add(box(13.4, FLOOR_Y, 4.9, std('#7E6A55'), 1.0, FLOOR_Y / 2, -0.6));
-    this.plane(4.4, 4.8, terracottaFloor([6, 6.5]), -3.4, FLOOR_Y + 0.002, -0.6);
-    this.plane(4.8, 4.8, encausticTile([8, 8]), 1.2, FLOOR_Y + 0.002, -0.6, { roughness: 0.55 });
-    this.plane(4.0, 4.8, terracottaFloor([7, 8]), 5.6, FLOOR_Y + 0.002, -0.6);
-    G.add(box(XR - XL, 0.08, 0.4, std('#8F8172'), ROOF_X, 0.04, 1.95)); // bậc thềm
+    // Nền nhà cao, bó đá; hiên lát gạch Bát Tràng, ba gian lát gạch bông, hai chái gạch đất
+    G.add(box(XR - XL + 0.8, F, pz1 - pz0, std('#ffffff', { map: plaster('#9A9184', [6, 0.4]) }), AX, F / 2, (pz0 + pz1) / 2));
+    this.plane(XR - XL + 0.8, pz1 - ZW, terracottaFloor([18, 3]), AX, F + 0.002, (ZW + pz1) / 2);
+    this.plane(XS[4] - XS[1], ZW - ZB, encausticTile([13, 7]), AX, F + 0.002, (ZW + ZB) / 2, { roughness: 0.32, bumpMap: null }); // gạch bông mài phẳng, bóng
+    for (const i of [0, 4]) this.plane(BAYS[i], ZW - ZB, terracottaFloor([3, 6]), (XS[i] + XS[i + 1]) / 2, F + 0.002, (ZW + ZB) / 2);
+    // Bậc tam cấp trước gian giữa, hai bên bó đá
+    const step = std('#9C9585', { roughness: 0.9 });
+    for (const j of [1, 2]) G.add(box(2.6, (F * (3 - j)) / 3, 0.32, step, AX, (F * (3 - j)) / 6, pz1 + 0.32 * j - 0.16));
+    for (const s of [-1, 1]) G.add(box(0.24, F * 0.85, 0.66, step, AX + s * 1.42, F * 0.425, pz1 + 0.33));
 
     this.ruong();
+    this.walls();
     this.roof();
-    this.kitchenShell();
 
-    // Đèn lồng đỏ dưới hiên
-    this.lantern(-4.3, FLOOR_Y + 2.45, 1.0);
-    this.lantern(-2.0, FLOOR_Y + 2.45, 1.0);
-
-    // Chậu cây trên hiên
-    this.pot(-4.6, -2.3, 0.55, '#2E5B2E');
-    this.pot(-1.8, -2.35, 0.42, '#3C6B34');
+    // Đèn lồng đỏ dưới hiên hai bên lối vào gian giữa
+    this.lantern(XS[2] + 0.45, F + 1.8, 1.3);
+    this.lantern(XS[3] - 0.45, F + 1.8, 1.3);
+    // Chậu cây hai đầu hiên
+    this.pot(XL + 0.5, 1.0, 0.55, '#2E5B2E');
+    this.pot(XR - 0.5, 1.0, 0.42, '#3C6B34');
 
     this.garden();
     this.livingRoom();
@@ -97,112 +172,107 @@ export class House {
     return m;
   }
 
-  /** Khung gỗ nhà rường: cột lim trên chân tảng, vì kèo, vách "thượng song hạ bản", cửa bức bàn. */
+  /**
+   * Bộ khung rường: bốn hàng cột trên đá tảng (hiên, quân trước, cái, quân sau), xà dọc xà ngang,
+   * trụ trốn đỡ đòn dông, kèo hai mái, kẻ chéo đỡ mái hiên, đòn tay dưới mái.
+   */
   ruong() {
-    const G = this.group;
+    const G = this.group, F = FLOOR_Y;
     const col = std('#ffffff', { map: wood('#5B2A1A'), roughness: 0.55 });
     const beam = std('#ffffff', { map: wood('#4E2617'), roughness: 0.6 });
     const stone = std('#8C877C', { roughness: 0.95 });
-    const wallH = 3.35;
-    // Vách gỗ phía sau hiên và gian giữa
-    G.add(box(XR - XL, wallH, 0.14, std('#ffffff', { map: woodPanel([7, 1]) }), ROOF_X, FLOOR_Y + wallH / 2, ZB));
-    // Vách ngăn giữa hiên và gian giữa, cửa bức bàn mở
-    const panel = std('#ffffff', { map: woodPanel([1, 1]) });
-    G.add(box(0.14, wallH, 0.75, panel, -1.2, FLOOR_Y + wallH / 2, -2.5));
-    G.add(box(0.14, wallH - 2.45, 1.3, std('#ffffff', { map: wood('#4E2617') }), -1.2, FLOOR_Y + 2.45 + (wallH - 2.45) / 2, -1.45));
-    G.add(box(0.14, wallH, 0.4, panel, -1.2, FLOOR_Y + wallH / 2, -0.6));
-    const doorMat = std('#ffffff', { map: woodPanel([1, 2]) });
-    const d1 = box(0.05, 2.4, 0.62, doorMat, -1.05, FLOOR_Y + 1.2, -2.0); d1.rotation.y = 0.9; G.add(d1);
-    const d2 = box(0.05, 2.4, 0.62, doorMat, -1.05, FLOOR_Y + 1.2, -0.9); d2.rotation.y = -0.9; G.add(d2);
-
-    // Cột: hàng hiên phía trước, hàng hông trái để ngỏ ra sân
-    const posts = [[-5.4, ZF], [-3.3, ZF], [-1.2, ZF], [1.2, ZF], [3.4, ZF], [-5.4, -0.6], [-5.4, ZB + 0.15], [3.4, ZB + 0.15]];
-    const topAt = (z) => EAVE.y + ((EAVE.z - z) / (EAVE.z - RIDGE.z)) * (RIDGE.y - EAVE.y) - 0.12;
-    for (const [x, z] of posts) {
-      const h = Math.min(topAt(z), FLOOR_Y + 3.3) - FLOOR_Y;
-      G.add(cyl(0.1, 0.11, h, col, x, FLOOR_Y + h / 2, z));
-      G.add(cyl(0.17, 0.2, 0.14, stone, x, FLOOR_Y + 0.07, z, 10));
+    const post = (x, z, top, r = 0.1) => {
+      G.add(cyl(r, r + 0.012, top - F, col, x, (F + top) / 2, z));
+      G.add(cyl(r + 0.08, r + 0.1, 0.12, stone, x, F + 0.06, z, 10)); // đá tảng
+    };
+    const hienTop = hienY(ZF) - 0.1, WT = F + WALL_H, CT = F + 3.6;
+    for (const x of XS) {
+      post(x, ZF, hienTop, 0.09); post(x, ZW, WT); post(x, ZB, WT);
+      G.add(beamBetween([x, F + 2.62, ZW + 0.05], [x, hienTop + 0.02, ZF], 0.1, 0.13, beam)); // kẻ hiên
     }
-    // Xà dọc hàng hiên, vì kèo ngang ở hai đầu và giữa nhà, trụ trốn đỡ nóc
-    const by = FLOOR_Y + 3.15;
-    G.add(box(XR - XL + 0.2, 0.16, 0.16, beam, ROOF_X, by, ZF));
-    for (const x of [-5.4, -1.2, 3.4]) {
-      G.add(box(0.14, 0.18, ZF - ZB, beam, x, by, (ZF + ZB) / 2));
-      G.add(box(0.12, RIDGE.y - by - 0.1, 0.12, beam, x, (RIDGE.y + by) / 2 - 0.05, RIDGE.z));
-      for (const s of [-1, 1]) { // kèo chéo
-        const len = Math.hypot(2.1, RIDGE.y - by - 0.15);
-        const k = box(0.1, 0.12, len, beam, x, by + (RIDGE.y - by) / 2 - 0.05, RIDGE.z + s * 1.05);
-        k.rotation.x = s * Math.atan2(RIDGE.y - by - 0.15, 2.1); G.add(k);
-      }
+    for (const x of XS.slice(1, 5)) { // bốn bộ vì giữa nhà
+      for (const z of ZC) post(x, z, CT, 0.12);
+      G.add(beamBetween([x, WT, ZW], [x, WT, ZB], 0.13, 0.17, beam)); // xà lòng
+      G.add(beamBetween([x, CT, ZC[0]], [x, CT, ZC[1]], 0.14, 0.2, beam)); // xà cái
+      G.add(box(0.12, RIDGE_Y - 0.16 - CT, 0.12, beam, x, (RIDGE_Y - 0.16 + CT) / 2, RZ)); // trụ trốn
+      for (const z of [EAVE.f - 0.1, EAVE.b + 0.1]) G.add(beamBetween([x, mainY(z) - 0.17, z], [x, RIDGE_Y - 0.17, RZ], 0.1, 0.13, beam)); // kèo
     }
-    // Hồi nhà hai đầu
-    const s = new THREE.Shape();
-    const roofY = (z) => topAt(z) + 0.05;
-    s.moveTo(ZF, by - 0.1); s.lineTo(ZF, roofY(ZF)); s.lineTo(RIDGE.z, RIDGE.y - 0.08); s.lineTo(ZB, roofY(2 * RIDGE.z - ZB)); s.lineTo(ZB, by - 0.1);
-    const gableGeo = new THREE.ShapeGeometry(s).rotateY(-Math.PI / 2);
-    const gableMat = std('#ffffff', { map: plaster('#E4D6B4', [2, 1]), side: THREE.DoubleSide });
-    for (const x of [XL, XR]) {
-      const g = new THREE.Mesh(gableGeo, gableMat); g.position.x = x; g.castShadow = true; g.receiveShadow = true; G.add(g);
+    // Xà dọc đầu cột các hàng, đòn dông
+    for (const [z, y] of [[ZF, hienTop + 0.02], [ZW, WT], [ZB, WT], [ZC[0], CT], [ZC[1], CT]]) G.add(beamBetween([XL, y, z], [XR, y, z], 0.13, 0.15, beam));
+    const h = (EAVE.f - EAVE.b) / 2;
+    G.add(beamBetween([EAVE.x0 + h, RIDGE_Y - 0.16, RZ], [EAVE.x1 - h, RIDGE_Y - 0.16, RZ], 0.14, 0.16, beam));
+    // Đòn tay: mái trước, mái sau ngắn dần theo mái chái; mái hiên chạy suốt
+    for (const d of [0.75, 1.5, 2.2]) {
+      for (const z of [EAVE.f - d, EAVE.b + d]) G.add(beamBetween([EAVE.x0 + d, mainY(z) - 0.13, z], [EAVE.x1 - d, mainY(z) - 0.13, z], 0.08, 0.08, beam));
     }
+    for (const z of [0.9, 1.6]) G.add(beamBetween([EAVE.x0 + 0.1, hienY(z) - 0.1, z], [EAVE.x1 - 0.1, hienY(z) - 0.1, z], 0.07, 0.07, beam));
   }
 
-  /** Mái ngói liệt hai mái, bờ nóc có hồ lô, bốn góc đao cong. */
+  /**
+   * Vách: gian giữa cửa bức bàn mở toang (cánh xếp vào hai bên), hai gian bên "thượng song hạ bản"
+   * (dưới ván kín, trên chấn song thật để nắng lọt), hai chái và tường hồi xây gạch trát vôi, có cửa sổ chớp.
+   */
+  walls() {
+    const G = this.group, F = FLOOR_Y, T = 0.1;
+    const plas = std('#ffffff', { map: plaster('#E4D6B4', [2, 1]) });
+    const plank = std('#ffffff', { map: wood('#5E2F1C', [1, 2]), roughness: 0.6 });
+    const board = std('#ffffff', { map: wood('#4E2617'), roughness: 0.6 });
+    const bar = std('#6E3E26', { roughness: 0.6 });
+    const doorMat = std('#ffffff', { map: woodPanel([1, 2]) });
+    const back = std('#ffffff', { map: woodPanel([2, 1]) });
+    for (let i = 0; i < 5; i++) {
+      const a = XS[i] + 0.1, b = XS[i + 1] - 0.1, w = b - a, cx = (a + b) / 2, chai = i === 0 || i === 4;
+      if (chai) {
+        G.add(box(w, WALL_H, T, plas, cx, F + WALL_H / 2, ZW));
+        this.shutters(cx, ZW + 0.05);
+      } else {
+        G.add(box(w, WALL_H - 2.5, T, board, cx, F + 2.5 + (WALL_H - 2.5) / 2, ZW)); // ván gió trên cửa
+        if (i === 2) {
+          for (const s of [-1, 1]) for (let k = 0; k < 2; k++) G.add(box(0.04, 2.45, 0.7, doorMat, (s < 0 ? a : b) - s * (0.05 + k * 0.06), F + 1.23, ZW - 0.4));
+        } else {
+          G.add(box(w, 1.1, T, plank, cx, F + 0.55, ZW));
+          G.add(box(w, 0.07, T + 0.03, board, cx, F + 1.13, ZW)); // ngưỡng song
+          const n = Math.round(w / 0.12);
+          for (let k = 1; k < n; k++) G.add(box(0.035, 1.35, 0.05, bar, a + (k * w) / n, F + 1.82, ZW));
+        }
+      }
+      G.add(box(w, WALL_H, T, chai ? plas : back, cx, F + WALL_H / 2, ZB));
+    }
+    for (const x of [XL, XR]) G.add(box(0.2, WALL_H, ZW - ZB, plas, x, F + WALL_H / 2, (ZW + ZB) / 2));
+  }
+
+  /** Mái ngói liệt: mái chính bốn mái (bờ nóc, bờ chảy, đầu đao cong, hồ lô giữa nóc) và mái hiên thấp phía trước. */
   roof() {
     const G = this.group;
-    const tiles = std('#ffffff', { map: roofTiles([7, 4]) });
-    const under = std('#ffffff', { map: wood('#5A3622', [8, 1]) });
-    const edge = std('#7A3A22');
-    const dz = EAVE.z - RIDGE.z, dy = EAVE.y - RIDGE.y;
-    const len = Math.hypot(dz, dy), ang = Math.atan2(-dy, dz);
-    const mats = [edge, edge, tiles, under, edge, edge];
-    const gutter = std('#E6DCC4'), ridgeMat = std('#D9CFB8', { roughness: 0.9 });
-    for (const s of [1, -1]) { // mái trước, mái sau
-      const zc = RIDGE.z + (s * dz) / 2;
-      const r = new THREE.Mesh(new THREE.BoxGeometry(ROOF_W, 0.12, len + 0.1), mats);
-      r.position.set(ROOF_X, (EAVE.y + RIDGE.y) / 2, zc); r.rotation.x = s * ang;
-      r.castShadow = true; r.receiveShadow = true; G.add(r);
-      // Bờ chảy hai đầu mái
-      for (const x of [ROOF_X - ROOF_W / 2 + 0.08, ROOF_X + ROOF_W / 2 - 0.08]) {
-        const b = box(0.18, 0.16, len + 0.1, ridgeMat, x, (EAVE.y + RIDGE.y) / 2 + 0.12, zc); b.rotation.x = s * ang; G.add(b);
-      }
-      // Đòn tay dưới mái
-      for (let t = 0.12; t < 0.95; t += 0.2) {
-        G.add(box(ROOF_W - 0.6, 0.09, 0.09, under, ROOF_X, EAVE.y + (RIDGE.y - EAVE.y) * t - 0.13, RIDGE.z + s * dz * (1 - t)));
-      }
-      G.add(box(ROOF_W, 0.06, 0.08, gutter, ROOF_X, EAVE.y - 0.04, RIDGE.z + s * (dz + 0.04))); // diềm mái
-      // Đao cong ở góc
-      for (const e of [-1, 1]) {
-        const d = box(0.7, 0.1, 0.16, ridgeMat, ROOF_X + e * (ROOF_W / 2 + 0.1), EAVE.y + 0.18, RIDGE.z + s * dz);
-        d.rotation.z = e * 0.55; G.add(d);
-      }
+    const tiles = std('#B89A8C', { map: roofTiles([0.7, 1.1]) }); // ngói liệt lâu năm: sẫm, ngả nâu rêu
+    this.wetMats.push(tiles);
+    const under = std('#ffffff', { map: wood('#5A3622', [0.6, 0.6]) });
+    const ridgeMat = std('#D9CFB8', { roughness: 0.9 }), gutter = std('#E6DCC4');
+    const add = (geo, mat, dy = 0) => { const m = new THREE.Mesh(geo, mat); m.position.y = dy; m.castShadow = m.receiveShadow = true; G.add(m); };
+    const { x0, x1, f, b } = EAVE, h = (f - b) / 2;
+    add(hipRoofGeo(x0, x1, f, b, EAVE_Y, PITCH), tiles);
+    add(hipRoofGeo(x0, x1, f, b, EAVE_Y, PITCH, true), under, -0.07);
+    const hy1 = hienY(HIEN.z1), k = Math.hypot(1, HIEN.slope);
+    const hien = [[[[x0, HIEN.y0, ZW], [x1, HIEN.y0, ZW], [x1, hy1, HIEN.z1], [x0, hy1, HIEN.z1]], (p) => [p[0], (p[2] - ZW) * k]]];
+    add(roofGeo(hien), tiles);
+    add(roofGeo(hien, true), under, -0.06);
+    // Diềm mái, bờ nóc, bờ chảy theo bốn đường chái, đầu đao cong vút ở bốn góc
+    for (const [z, y] of [[f, EAVE_Y], [b, EAVE_Y], [HIEN.z1, hy1]]) G.add(beamBetween([x0, y - 0.03, z], [x1, y - 0.03, z], 0.06, 0.1, gutter));
+    for (const x of [x0, x1]) G.add(beamBetween([x, HIEN.y0 + 0.04, ZW], [x, hy1 + 0.04, HIEN.z1], 0.14, 0.1, ridgeMat));
+    const E = [x0 + h, RIDGE_Y, RZ], Fr = [x1 - h, RIDGE_Y, RZ];
+    G.add(beamBetween([E[0] - 0.1, RIDGE_Y + 0.12, RZ], [Fr[0] + 0.1, RIDGE_Y + 0.12, RZ], 0.3, 0.26, ridgeMat));
+    for (const [cx, cz, sx, sz] of [[x0, f, -1, 1], [x1, f, 1, 1], [x1, b, 1, -1], [x0, b, -1, -1]]) {
+      const top = sx < 0 ? E : Fr;
+      G.add(beamBetween([cx, EAVE_Y + 0.07, cz], [top[0], RIDGE_Y + 0.07, RZ], 0.16, 0.14, ridgeMat));
+      G.add(beamBetween([cx, EAVE_Y + 0.07, cz], [cx + sx * 0.32, EAVE_Y + 0.4, cz + sz * 0.32], 0.15, 0.11, ridgeMat));
     }
-    // Bờ nóc và đuôi kìm uốn lên ở hai đầu
-    G.add(box(ROOF_W - 0.2, 0.24, 0.32, ridgeMat, ROOF_X, RIDGE.y + 0.12, RIDGE.z));
-    for (const e of [-1, 1]) {
-      const k = box(0.5, 0.14, 0.3, ridgeMat, ROOF_X + e * (ROOF_W / 2 - 0.05), RIDGE.y + 0.38, RIDGE.z);
-      k.rotation.z = e * 0.9; G.add(k);
-    }
+    for (const [p, s] of [[E, -1], [Fr, 1]]) G.add(beamBetween([p[0], RIDGE_Y + 0.15, RZ], [p[0] + s * 0.3, RIDGE_Y + 0.55, RZ], 0.2, 0.14, ridgeMat)); // đuôi kìm
     // Hồ lô giữa nóc
     const glaze = std('#3E7A5C', { roughness: 0.35 }), gold = std('#C9A040', { metalness: 0.5, roughness: 0.4 });
-    G.add(box(0.36, 0.14, 0.3, ridgeMat, ROOF_X, RIDGE.y + 0.31, RIDGE.z));
-    G.add(sph(0.17, glaze, ROOF_X, RIDGE.y + 0.52, RIDGE.z));
-    G.add(sph(0.11, glaze, ROOF_X, RIDGE.y + 0.76, RIDGE.z));
-    G.add(cyl(0.02, 0.04, 0.16, gold, ROOF_X, RIDGE.y + 0.92, RIDGE.z, 8));
-  }
-
-  /** Nhà bếp nối bên phải: tường vôi, mái ngói thấp hơn nhà chính. */
-  kitchenShell() {
-    const G = this.group;
-    const cream = std('#ffffff', { map: plaster('#DCCBA2', [2, 1]) });
-    const h = 2.8;
-    G.add(box(4.0, h + 0.1, 0.16, cream, 5.6, FLOOR_Y + (h + 0.1) / 2, ZB));
-    G.add(box(0.16, h, 1.6, cream, XR, FLOOR_Y + h / 2, -2.15));
-    G.add(box(0.16, h, 3.2, cream, 7.6, FLOOR_Y + h / 2, -1.35));
-    // Mái bếp bắt đầu sau chái nhà chính để không đâm xuyên mái lớn
-    const r = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.1, 5.9), [std('#7A3A22'), std('#7A3A22'), std('#ffffff', { map: roofTiles([3, 4]) }), std('#ffffff', { map: wood('#5A3622', [4, 1]) }), std('#7A3A22'), std('#7A3A22')]);
-    r.position.set(6.15, FLOOR_Y + 2.8, -0.55); r.rotation.x = 0.04; r.castShadow = true; r.receiveShadow = true;
-    G.add(r);
-    G.add(cyl(0.09, 0.1, 2.75, std('#ffffff', { map: wood('#5B2A1A') }), 7.5, FLOOR_Y + 1.37, 1.9));
+    G.add(box(0.36, 0.14, 0.3, ridgeMat, AX, RIDGE_Y + 0.31, RZ));
+    G.add(sph(0.17, glaze, AX, RIDGE_Y + 0.52, RZ));
+    G.add(sph(0.11, glaze, AX, RIDGE_Y + 0.76, RZ));
+    G.add(cyl(0.02, 0.04, 0.16, gold, AX, RIDGE_Y + 0.92, RZ, 8));
   }
 
   /** Vườn nhà Huế. */
@@ -225,30 +295,24 @@ export class House {
     this.screenWall(-1.0, 8.1);
     this.rockPool(-1.0, 5.4);
 
-    // Cây: cau cao vút, chuối, mít, thanh trà, hoa giấy
-    [[-10.8, -4.2, 6.2], [-8.4, -5.8, 5.4], [-4.4, -4.9, 6.0], [5.4, -5.1, 6.4], [8.4, -3.9, 5.5], [-8.6, 6.8, 5.6], [5.0, 7.4, 5.1], [-11.2, 5.6, 6.0]]
+    // Cây: cau cao vút, chuối, mít, thanh trà, hoa giấy (vườn sau và hai bên, chừa sân trước trống, nắng)
+    [[-10.8, -4.2, 6.2], [-8.4, -5.8, 5.4], [-4.6, -6.1, 6.0], [5.5, -5.6, 6.4], [8.6, -6.3, 5.5], [-8.6, 6.8, 5.6], [5.0, 7.4, 5.1], [-11.2, 5.6, 6.0]]
       .forEach(([x, z, h]) => this.areca(x, z, h));
-    [[-11.2, -0.8], [-10.4, 0.5], [8.6, 2.2], [8.8, -2.4], [7.0, 6.0]].forEach(([x, z]) => this.banana(x, z));
-    this.jackfruit(-7.2, -5.0);
-    this.jackfruit(2.2, -5.6);
+    [[-11.2, -0.8], [-10.4, 0.5], [8.6, 1.6], [7.6, 3.2], [7.0, 6.0]].forEach(([x, z]) => this.banana(x, z));
+    this.jackfruit(-10.2, -5.0);
+    this.pomelo(2.2, -6.2);
     this.pomelo(-9.4, 5.2);
     this.pomelo(3.6, 5.3);
     this.bougainvillea(-9.4, -2.2);
     this.well(-10.2, 2.7);
-    // Chậu kiểng trên bệ gạch trước hiên
-    [[-4.6, 3.1], [-3.0, 3.1], [1.0, 3.1], [2.6, 3.1]].forEach(([x, z], i) => this.bonsai(x, z, i));
+    // Chậu kiểng trên bệ gạch dọc mép sân trước hiên, chừa lối bậc tam cấp
+    [[-6.6, 3.2], [-2.95, 3.2], [0.95, 3.2], [4.6, 3.2]].forEach(([x, z], i) => this.bonsai(x, z, i));
     // Lũy tre, vườn nhà hàng xóm ở xa làm nền
-    const far = [std('#3A5A30'), std('#456B35'), std('#33502B')];
+    const far = [foliage('#3A5A30'), foliage('#456B35'), foliage('#33502B')];
     for (let i = 0; i < 46; i++) {
       const a = (i / 46) * Math.PI * 2 + Math.random() * 0.1, r = 24 + Math.random() * 7, s = 2.5 + Math.random() * 2.5;
       const m = blob(s, far[i % 3], Math.cos(a) * r - 1, s * 0.7, Math.sin(a) * r, 0.9);
       m.castShadow = false; G.add(m);
-    }
-    // Lu nước cạnh bếp
-    const jar = std('#5E3B26', { roughness: 0.35 });
-    for (const [x, z, r] of [[8.2, 0.4, 0.34], [8.5, -0.4, 0.28]]) {
-      const j = sph(r, jar, x, r * 0.95, z, 14); j.scale.y = 1.15; G.add(j);
-      G.add(cyl(r * 0.6, r * 0.6, 0.04, std('#1E2A2E', { roughness: 0.1 }), x, r * 2.05, z, 14));
     }
   }
 
@@ -271,7 +335,7 @@ export class House {
     const W = 2.2, D = 1.2, H = 0.55;
     G.add(box(W, H, 0.12, rim, x, H / 2, z - D / 2)); G.add(box(W, H, 0.12, rim, x, H / 2, z + D / 2));
     G.add(box(0.12, H, D, rim, x - W / 2, H / 2, z)); G.add(box(0.12, H, D, rim, x + W / 2, H / 2, z));
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.12, D - 0.12), std('#3F6E6A', { roughness: 0.08, metalness: 0.1 }));
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.12, D - 0.12), waterMat('#2F5C57'));
     water.rotation.x = -Math.PI / 2; water.position.set(x, H - 0.08, z); water.receiveShadow = true; G.add(water);
     const rock = std('#7C7A70', { roughness: 1, flatShading: true });
     const rocks = [[0, 0.35, 0, 0.42], [-0.25, 0.85, 0.05, 0.3], [0.18, 0.95, -0.05, 0.26], [-0.05, 1.3, 0, 0.18], [0.45, 0.45, 0.15, 0.22]];
@@ -279,7 +343,7 @@ export class House {
       const m = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), rock);
       m.position.set(x + dx, y, z + dz); m.scale.y = 1.4; m.rotation.set(Math.random(), Math.random(), 0); m.castShadow = true; G.add(m);
     }
-    const leaf = std('#3E6B30');
+    const leaf = foliage('#3E6B30');
     for (const [dx, y, dz] of [[-0.32, 1.12, 0.05], [0.25, 1.2, 0], [0.02, 1.5, 0.02]]) G.add(blob(0.13, leaf, x + dx, y, z + dz, 0.5));
     // Mấy con cá chép đỏ lượn
     this.fish = [];
@@ -342,7 +406,7 @@ export class House {
       b.rotation.set(Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6); G.add(b);
     }
     const g = this.swayGroup(x, 3.0, z, 0.02);
-    const dark = std('#2F5527'), mid = std('#3D6B30');
+    const dark = foliage('#2F5527'), mid = foliage('#3D6B30');
     for (let i = 0; i < 16; i++) {
       const a = Math.random() * Math.PI * 2, r = Math.random() * 1.5;
       g.add(blob(0.7 + Math.random() * 0.5, i % 3 ? dark : mid, Math.cos(a) * r, 0.5 + Math.random() * 1.8, Math.sin(a) * r * 0.8));
@@ -358,7 +422,7 @@ export class House {
     const G = this.group;
     G.add(cyl(0.1, 0.15, 1.8, std('#6A5440'), x, 0.9, z, 10));
     const g = this.swayGroup(x, 1.6, z, 0.03);
-    const leaf = std('#47803A');
+    const leaf = foliage('#47803A');
     for (let i = 0; i < 11; i++) {
       const a = Math.random() * Math.PI * 2, r = Math.random() * 0.9;
       g.add(blob(0.5 + Math.random() * 0.3, leaf, Math.cos(a) * r, 0.3 + Math.random() * 1.0, Math.sin(a) * r));
@@ -379,7 +443,7 @@ export class House {
     ring.position.set(x, 0.4, z); ring.castShadow = true; G.add(ring);
     const lip = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.07, 6, 24), std('#9C9483'));
     lip.rotation.x = Math.PI / 2; lip.position.set(x, 0.8, z); G.add(lip);
-    const water = new THREE.Mesh(new THREE.CircleGeometry(0.58, 20), std('#1B2A2C', { roughness: 0.05 }));
+    const water = new THREE.Mesh(new THREE.CircleGeometry(0.58, 20), waterMat('#1B2A2C'));
     water.rotation.x = -Math.PI / 2; water.position.set(x, 0.45, z); G.add(water);
     const wd = std('#ffffff', { map: wood('#5C3B22') });
     for (const s of [-1, 1]) G.add(box(0.08, 1.4, 0.08, wd, x + s * 0.7, 0.7, z));
@@ -396,7 +460,7 @@ export class House {
     G.add(cyl(0.245, 0.245, 0.05, std('#2C4A7E', { roughness: 0.3 }), x, 0.66, z, 16));
     const trunk = cyl(0.025, 0.05, 0.5, std('#5A4232'), x, 0.95, z, 6); trunk.rotation.z = (i % 2 ? 1 : -1) * 0.35; G.add(trunk);
     const g = this.swayGroup(x + (i % 2 ? -0.12 : 0.12), 1.12, z, 0.03);
-    const leaf = std(i % 2 ? '#3A6A2E' : '#4C7A34');
+    const leaf = foliage(i % 2 ? '#3A6A2E' : '#4C7A34');
     for (const [dx, dy] of [[0, 0.06], [-0.18, -0.06], [0.16, -0.1]]) g.add(blob(0.14, leaf, dx, dy, 0, 0.45));
   }
 
@@ -456,6 +520,7 @@ export class House {
 
   /** Cây cỏ lay theo gió. wind: 0 (lặng) .. 1.4 (gió mạnh) */
   update(t, wind) {
+    waterNormal().offset.set(t * 0.012, t * 0.007 * (1 + wind));
     for (const s of this.sway) {
       const a = s.amp * wind;
       s.g.rotation.z = Math.sin(t * s.f * 1.7 + s.ph) * a + Math.sin(t * s.f * 4.1 + s.ph * 2) * a * 0.3;
@@ -468,97 +533,188 @@ export class House {
     }
   }
 
+  /**
+   * Nội thất ba gian hai chái: gian giữa thờ tự và tiếp khách, gian trái sập gụ (chỗ treo lồng "phòng khách"),
+   * gian phải tủ chè; chái trái rương gỗ, chái phải phản nằm.
+   */
   livingRoom() {
-    const G = this.group;
+    const G = this.group, F = FLOOR_Y;
     const lacquer = std('#ffffff', { map: wood('#5A2318'), roughness: 0.45 });
     const gold = std('#C9A040', { metalness: 0.6, roughness: 0.35 });
-    // Bàn thờ
-    const ax = 2.4, az = -2.5;
-    G.add(box(1.4, 0.06, 0.5, lacquer, ax, FLOOR_Y + 1.05, az));
-    for (const sx of [-0.62, 0.62]) for (const sz of [-0.2, 0.2]) G.add(box(0.06, 1.03, 0.06, lacquer, ax + sx, FLOOR_Y + 0.515, az + sz));
-    G.add(box(1.4, 0.12, 0.5, lacquer, ax, FLOOR_Y + 0.25, az));
-    G.add(cyl(0.08, 0.06, 0.1, gold, ax, FLOOR_Y + 1.13, az + 0.05));
+    // Bàn thờ gian giữa, kê sát vách hậu
+    const ax = AX, az = ZB + 0.45;
+    G.add(box(1.4, 0.06, 0.5, lacquer, ax, F + 1.05, az));
+    for (const sx of [-0.62, 0.62]) for (const sz of [-0.2, 0.2]) G.add(box(0.06, 1.03, 0.06, lacquer, ax + sx, F + 0.515, az + sz));
+    G.add(box(1.4, 0.12, 0.5, lacquer, ax, F + 0.25, az));
+    G.add(cyl(0.08, 0.06, 0.1, gold, ax, F + 1.13, az + 0.05));
     const incense = std('#B3261E');
     for (const dx of [-0.02, 0, 0.02]) {
-      const stick = cyl(0.003, 0.003, 0.3, incense, ax + dx, FLOOR_Y + 1.3, az + 0.05, 5);
+      const stick = cyl(0.003, 0.003, 0.3, incense, ax + dx, F + 1.3, az + 0.05, 5);
       stick.rotation.z = dx * 6; G.add(stick);
     }
     const ember = new THREE.MeshBasicMaterial({ color: '#FF7A2E' });
-    this.incenseTip = sph(0.006, ember, ax, FLOOR_Y + 1.45, az + 0.05, 6);
+    this.incenseTip = sph(0.006, ember, ax, F + 1.45, az + 0.05, 6);
     G.add(this.incenseTip);
-    G.add(box(0.26, 0.34, 0.03, std('#3B2A20'), ax - 0.35, FLOOR_Y + 1.25, az - 0.12));
-    G.add(box(0.2, 0.26, 0.032, std('#A89A86'), ax - 0.35, FLOOR_Y + 1.25, az - 0.105));
+    G.add(box(0.26, 0.34, 0.03, std('#3B2A20'), ax - 0.35, F + 1.25, az - 0.12));
+    G.add(box(0.2, 0.26, 0.032, std('#A89A86'), ax - 0.35, F + 1.25, az - 0.105));
     const fruit = ['#E4502E', '#F0C23B', '#7DB043', '#E07F2B', '#C93A5B'];
-    fruit.forEach((c, i) => G.add(sph(0.045, std(c), ax + 0.25 + (i % 3) * 0.07, FLOOR_Y + 1.12 + Math.floor(i / 3) * 0.06, az + 0.03, 10)));
+    fruit.forEach((c, i) => G.add(sph(0.045, std(c), ax + 0.25 + (i % 3) * 0.07, F + 1.12 + Math.floor(i / 3) * 0.06, az + 0.03, 10)));
     // Hoành phi sơn son thếp vàng và đôi câu đối
-    G.add(box(1.5, 0.42, 0.06, std('#8E1B12', { roughness: 0.4 }), ax, FLOOR_Y + 2.55, ZB + 0.1));
-    G.add(box(1.36, 0.3, 0.07, gold, ax, FLOOR_Y + 2.55, ZB + 0.11));
+    G.add(box(1.5, 0.42, 0.06, std('#8E1B12', { roughness: 0.4 }), ax, F + 2.55, ZB + 0.1));
+    G.add(box(1.36, 0.3, 0.07, gold, ax, F + 2.55, ZB + 0.11));
     for (const dx of [-0.95, 0.95]) {
-      G.add(box(0.2, 1.5, 0.05, std('#1E1612', { roughness: 0.4 }), ax + dx, FLOOR_Y + 1.75, ZB + 0.1));
-      for (let i = 0; i < 5; i++) G.add(box(0.1, 0.1, 0.02, gold, ax + dx, FLOOR_Y + 1.15 + i * 0.28, ZB + 0.13));
+      G.add(box(0.2, 1.5, 0.05, std('#1E1612', { roughness: 0.4 }), ax + dx, F + 1.75, ZB + 0.1));
+      for (let i = 0; i < 5; i++) G.add(box(0.1, 0.1, 0.02, gold, ax + dx, F + 1.15 + i * 0.28, ZB + 0.13));
     }
     for (const dx of [-0.55, 0.55]) {
       const lamp = std('#D3241A', { emissive: '#D3241A', emissiveIntensity: 0.4 });
-      G.add(cyl(0.035, 0.035, 0.12, lamp, ax + dx, FLOOR_Y + 1.14, az + 0.12, 10));
+      G.add(cyl(0.035, 0.035, 0.12, lamp, ax + dx, F + 1.14, az + 0.12, 10));
       this.emissive.push({ mat: lamp, base: 0.6, night: 2.5 });
     }
     const altarLight = new THREE.PointLight('#FF5A3A', 0, 3, 2);
-    altarLight.position.set(ax, FLOOR_Y + 1.4, az + 0.4);
+    altarLight.position.set(ax, F + 1.4, az + 0.4);
     G.add(altarLight); this.lights.push({ light: altarLight, night: 1.6, day: 0.3 });
 
-    // Sập gụ và bàn trà
+    // Bộ bàn trà, đôi ghế bành tiếp khách trước bàn thờ
     const wd = std('#ffffff', { map: wood('#4A2817'), roughness: 0.5 });
-    G.add(box(1.5, 0.08, 0.55, wd, -0.1, FLOOR_Y + 0.45, -2.4));
-    G.add(box(1.5, 0.55, 0.06, wd, -0.1, FLOOR_Y + 0.75, -2.67));
-    for (const sx of [-0.7, 0.7]) G.add(box(0.07, 0.45, 0.55, wd, -0.1 + sx, FLOOR_Y + 0.225, -2.4));
-    G.add(box(0.9, 0.05, 0.5, wd, -0.1, FLOOR_Y + 0.42, -1.55));
-    for (const sx of [-0.4, 0.4]) for (const sz of [-0.2, 0.2]) G.add(box(0.05, 0.4, 0.05, wd, -0.1 + sx, FLOOR_Y + 0.2, -1.55 + sz));
+    const tz = -1.7;
+    G.add(box(1.0, 0.05, 0.6, wd, ax, F + 0.62, tz));
+    for (const sx of [-0.44, 0.44]) for (const sz of [-0.25, 0.25]) G.add(box(0.05, 0.6, 0.05, wd, ax + sx, F + 0.3, tz + sz));
+    for (const s of [-1, 1]) {
+      const cx = ax + s * 0.88;
+      G.add(box(0.5, 0.05, 0.5, wd, cx, F + 0.44, tz));
+      G.add(box(0.05, 0.6, 0.5, wd, cx + s * 0.23, F + 0.75, tz)); // tựa lưng
+      for (const sz of [-0.23, 0.23]) {
+        G.add(box(0.5, 0.04, 0.05, wd, cx, F + 0.64, tz + sz)); // tay vịn
+        for (const sx of [-0.22, 0.22]) G.add(box(0.045, 0.44, 0.045, wd, cx + sx, F + 0.22, tz + sz));
+      }
+    }
     const teapot = std('#E9E4D8', { roughness: 0.25 });
-    G.add(sph(0.06, teapot, -0.15, FLOOR_Y + 0.5, -1.55, 12));
-    for (const dx of [0.05, 0.12, 0.19]) G.add(cyl(0.02, 0.016, 0.03, teapot, -0.15 + dx, FLOOR_Y + 0.46, -1.45, 10));
+    G.add(sph(0.06, teapot, ax - 0.05, F + 0.7, tz, 12));
+    for (const dx of [0.1, 0.17, 0.24]) G.add(cyl(0.02, 0.016, 0.03, teapot, ax + dx - 0.05, F + 0.66, tz + 0.1, 10));
 
-    const lamp = new THREE.PointLight('#FFD39A', 0, 7, 2);
-    lamp.position.set(1.0, FLOOR_Y + 2.7, -1.2);
-    G.add(lamp); this.lights.push({ light: lamp, night: 7, day: 1.2 }); // dưới mái lớn ban ngày hơi tối
-    const bulb = std('#FFF3D6', { emissive: '#FFE2A8', emissiveIntensity: 0.1 });
-    G.add(sph(0.08, bulb, 1.0, FLOOR_Y + 2.75, -1.2, 10));
-    G.add(cyl(0.004, 0.004, 0.4, std('#222'), 1.0, FLOOR_Y + 3.0, -1.2, 4));
-    this.emissive.push({ mat: bulb, base: 0.1, night: 3 });
+    // Sập gụ gian trái, phía trước chỗ treo lồng
+    const sx0 = (XS[1] + XS[2]) / 2;
+    G.add(box(1.9, 0.08, 1.15, lacquer, sx0, F + 0.45, -0.9));
+    G.add(box(1.86, 0.1, 1.1, lacquer, sx0, F + 0.36, -0.9)); // diềm sập
+    for (const dx of [-0.88, 0.88]) for (const dz of [-0.5, 0.5]) G.add(box(0.1, 0.32, 0.1, lacquer, sx0 + dx, F + 0.16, -0.9 + dz));
+    // Tủ chè gian phải sát vách hậu, trên bày bình hoa, khay trà
+    const tx0 = (XS[3] + XS[4]) / 2;
+    G.add(box(1.9, 0.95, 0.45, lacquer, tx0, F + 0.6, ZB + 0.32));
+    for (const dx of [-0.88, 0.88]) G.add(box(0.08, 0.13, 0.4, lacquer, tx0 + dx, F + 0.065, ZB + 0.32));
+    for (const dx of [-0.45, 0.45]) G.add(box(0.8, 0.6, 0.02, std('#2A1810', { roughness: 0.3 }), tx0 + dx, F + 0.62, ZB + 0.56));
+    G.add(cyl(0.09, 0.06, 0.32, std('#2C4A7E', { roughness: 0.25 }), tx0 - 0.5, F + 1.24, ZB + 0.32, 14));
+    G.add(sph(0.12, std('#D2357F'), tx0 - 0.5, F + 1.46, ZB + 0.32, 10));
+    G.add(cyl(0.2, 0.2, 0.03, gold, tx0 + 0.4, F + 1.09, ZB + 0.32, 16));
+    G.add(box(1.2, 0.7, 0.04, std('#ffffff', { map: plaster('#C9B98E', [1, 1]) }), tx0, F + 2.0, ZB + 0.08)); // tranh treo
+    // Bức thư pháp giấy dó treo vách hậu gian trái, sau chỗ treo lồng
+    G.add(box(0.62, 1.3, 0.02, std('#E8DFC8', { roughness: 0.95 }), sx0 + 0.75, F + 1.75, ZB + 0.07));
+    for (let i = 0; i < 4; i++) G.add(box(0.16 + (i % 2) * 0.08, 0.12, 0.01, std('#1E1612'), sx0 + 0.75, F + 2.15 - i * 0.26, ZB + 0.085));
+    for (const y of [F + 1.1, F + 2.4]) G.add(cyl(0.015, 0.015, 0.72, lacquer, sx0 + 0.75, y, ZB + 0.08, 6).rotateZ(Math.PI / 2));
+    // Chái trái: rương gỗ khóa đồng; chái phải: phản gỗ
+    G.add(box(1.0, 0.55, 0.55, lacquer, (XS[0] + XS[1]) / 2, F + 0.28, ZB + 0.4));
+    G.add(box(0.1, 0.1, 0.02, gold, (XS[0] + XS[1]) / 2, F + 0.42, ZB + 0.68));
+    const bx = (XS[4] + XS[5]) / 2;
+    G.add(box(1.5, 0.06, 1.9, wd, bx, F + 0.45, -2.6));
+    for (const dx of [-0.68, 0.68]) for (const dz of [-0.88, 0.88]) G.add(box(0.08, 0.42, 0.08, wd, bx + dx, F + 0.21, -2.6 + dz));
+    G.add(box(1.4, 0.05, 1.8, std('#C9B58C', { roughness: 0.95 }), bx, F + 0.5, -2.6)); // chiếu cói
 
-    this.smokeAnchor = new THREE.Vector3(ax, FLOOR_Y + 1.48, az + 0.05);
+    // Đèn treo gian giữa và gian trái (trong nhà rường kín, ban ngày vẫn hơi tối)
+    for (const [x, day, night] of [[ax, 1.6, 7], [sx0, 1.2, 4]]) {
+      const lamp = new THREE.PointLight('#FFD39A', 0, 7, 2);
+      lamp.position.set(x, F + 2.75, -1.0);
+      G.add(lamp); this.lights.push({ light: lamp, night, day });
+      const bulb = std('#FFF3D6', { emissive: '#FFE2A8', emissiveIntensity: 0.1 });
+      G.add(sph(0.08, bulb, x, F + 2.8, -1.0, 10));
+      G.add(cyl(0.004, 0.004, 0.45, std('#222'), x, F + 3.05, -1.0, 4));
+      this.emissive.push({ mat: bulb, base: 0.1, night: 3 });
+    }
+
+    this.smokeAnchor = new THREE.Vector3(ax, F + 1.48, az + 0.05);
   }
 
+  /** Nhà ngang làm bếp, tách riêng phía sau bên phải: tường vôi, mái ngói hai mái thấp, cửa mở ra sân. */
   kitchen() {
-    const G = this.group;
-    const tileMat = std('#E7E2D6', { roughness: 0.35 });
-    G.add(box(3.6, 0.85, 0.6, std('#8A8174'), 5.6, FLOOR_Y + 0.425, -2.5));
-    G.add(box(3.6, 0.04, 0.62, tileMat, 5.6, FLOOR_Y + 0.87, -2.5));
-    // Bếp ga và chảo chống dính
-    G.add(box(0.7, 0.1, 0.42, std('#1F1F22', { roughness: 0.4 }), 5.8, FLOOR_Y + 0.94, -2.5));
-    for (const dx of [-0.17, 0.17]) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.01, 6, 20), std('#555'));
-      ring.rotation.x = Math.PI / 2; ring.position.set(5.8 + dx, FLOOR_Y + 1.0, -2.5); G.add(ring);
+    const G = this.group, F = FLOOR_Y, K = KITCHEN;
+    const cx = (K.x0 + K.x1) / 2, cz = (K.zb + K.zf) / 2, w = K.x1 - K.x0, d = K.zf - K.zb;
+    const cream = std('#ffffff', { map: plaster('#DCCBA2', [2, 1]) });
+    G.add(box(w + 0.4, F, d + 0.4, std('#ffffff', { map: plaster('#9A9184', [2, 0.4]) }), cx, F / 2, cz));
+    this.plane(w, d, terracottaFloor([4, 5]), cx, F + 0.002, cz);
+    // Tường: hậu, hai hồi, mặt trước chừa cửa đi
+    G.add(box(w, K.h, 0.14, cream, cx, F + K.h / 2, K.zb));
+    for (const x of [K.x0, K.x1]) G.add(box(0.14, K.h, d, cream, x, F + K.h / 2, cz));
+    const dx0 = 7.75, dx1 = 8.65;
+    G.add(box(dx0 - K.x0, K.h, 0.14, cream, (K.x0 + dx0) / 2, F + K.h / 2, K.zf));
+    G.add(box(K.x1 - dx1, K.h, 0.14, cream, (dx1 + K.x1) / 2, F + K.h / 2, K.zf));
+    G.add(box(dx1 - dx0, K.h - 2.1, 0.14, cream, (dx0 + dx1) / 2, F + 2.1 + (K.h - 2.1) / 2, K.zf));
+    G.add(box(0.9, 0.12, 0.3, std('#9C9585'), (dx0 + dx1) / 2, F - 0.06, K.zf + 0.32)); // bậc cửa
+    // Mái hai mái, hồi tam giác hai đầu
+    const p = 0.45, ze0 = K.zf + 0.4, ze1 = K.zb - 0.4, ey = F + K.h - 0.1, ry = ey + (ze0 - cz) * p, k = Math.hypot(1, p);
+    const gx0 = K.x0 - 0.3, gx1 = K.x1 + 0.3;
+    const faces = [
+      [[[gx0, ey, ze0], [gx1, ey, ze0], [gx1, ry, cz], [gx0, ry, cz]], (q) => [q[0], (ze0 - q[2]) * k]],
+      [[[gx1, ey, ze1], [gx0, ey, ze1], [gx0, ry, cz], [gx1, ry, cz]], (q) => [-q[0], (q[2] - ze1) * k]],
+    ];
+    const tiles = std('#B89A8C', { map: roofTiles([0.7, 1.1]) }); // ngói liệt lâu năm: sẫm, ngả nâu rêu
+    this.wetMats.push(tiles);
+    const roofTop = new THREE.Mesh(roofGeo(faces), tiles); roofTop.castShadow = roofTop.receiveShadow = true; G.add(roofTop);
+    const roofUnder = new THREE.Mesh(roofGeo(faces, true), std('#ffffff', { map: wood('#5A3622', [0.6, 0.6]) }));
+    roofUnder.position.y = -0.06; roofUnder.receiveShadow = true; G.add(roofUnder);
+    const ridgeMat = std('#D9CFB8', { roughness: 0.9 });
+    G.add(beamBetween([gx0, ry + 0.08, cz], [gx1, ry + 0.08, cz], 0.24, 0.2, ridgeMat));
+    for (const z of [ze0, ze1]) G.add(beamBetween([gx0, ey - 0.03, z], [gx1, ey - 0.03, z], 0.06, 0.1, std('#E6DCC4')));
+    const s = new THREE.Shape();
+    s.moveTo(K.zf, F + K.h - 0.02); s.lineTo(cz, ry - 0.06); s.lineTo(K.zb, F + K.h - 0.02);
+    const gableGeo = new THREE.ShapeGeometry(s).rotateY(-Math.PI / 2);
+    for (const x of [K.x0, K.x1]) {
+      const g = new THREE.Mesh(gableGeo, std('#ffffff', { map: plaster('#DCCBA2', [1, 0.5]), side: THREE.DoubleSide }));
+      g.position.x = x; g.castShadow = g.receiveShadow = true; G.add(g);
     }
-    const pan = cyl(0.14, 0.12, 0.05, std('#2A2A2E', { roughness: 0.3 }), 5.63, FLOOR_Y + 1.03, -2.5, 20);
+
+    // Bệ bếp sát hồi phải: bếp ga, chảo chống dính
+    const tileMat = std('#E7E2D6', { roughness: 0.35 });
+    const bx = K.x1 - 0.4, bz = -3.3;
+    G.add(box(0.62, 0.85, 2.6, std('#8A8174'), bx, F + 0.425, bz));
+    G.add(box(0.64, 0.04, 2.62, tileMat, bx, F + 0.87, bz));
+    G.add(box(0.42, 0.1, 0.7, std('#1F1F22', { roughness: 0.4 }), bx, F + 0.94, bz - 0.3));
+    for (const dz of [-0.17, 0.17]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.01, 6, 20), std('#555'));
+      ring.rotation.x = Math.PI / 2; ring.position.set(bx, F + 1.0, bz - 0.3 + dz); G.add(ring);
+    }
+    const pan = cyl(0.14, 0.12, 0.05, std('#2A2A2E', { roughness: 0.3 }), bx, F + 1.03, bz - 0.47, 20);
     G.add(pan);
-    const handle = box(0.26, 0.025, 0.035, std('#1A1A1A'), 5.84, FLOOR_Y + 1.05, -2.3);
-    handle.rotation.y = -0.9; G.add(handle);
-    this.panPos = new THREE.Vector3(5.63, FLOOR_Y + 1.08, -2.5);
-    // Kệ và hũ
-    G.add(box(1.6, 0.04, 0.3, std('#7A5A3A'), 4.6, FLOOR_Y + 1.9, -2.72));
-    ['#C9A27A', '#9E3E2A', '#E8DDC6', '#567A4E'].forEach((c, i) => G.add(cyl(0.07, 0.07, 0.2, std(c), 4.0 + i * 0.38, FLOOR_Y + 2.02, -2.72, 12)));
+    const handle = box(0.035, 0.025, 0.26, std('#1A1A1A'), bx - 0.2, F + 1.05, bz - 0.6);
+    handle.rotation.y = -0.6; G.add(handle);
+    this.panPos = new THREE.Vector3(bx, F + 1.08, bz - 0.47);
+    // Kệ và hũ trên vách hậu
+    G.add(box(1.4, 0.04, 0.3, std('#7A5A3A'), 8.3, F + 1.9, K.zb + 0.22));
+    ['#C9A27A', '#9E3E2A', '#E8DDC6', '#567A4E'].forEach((c, i) => G.add(cyl(0.07, 0.07, 0.2, std(c), 7.8 + i * 0.34, F + 2.02, K.zb + 0.22, 12)));
     // Cửa sổ chớp xanh nhìn ra vườn sau
-    G.add(box(1.0, 0.8, 0.05, std('#BFE0EA', { emissive: '#7FB7CC', emissiveIntensity: 0.25 }), 6.6, FLOOR_Y + 1.85, ZB + 0.1));
-    G.add(box(1.1, 0.9, 0.04, std('#2F6A55'), 6.6, FLOOR_Y + 1.85, ZB + 0.08));
+    G.add(box(1.0, 0.8, 0.05, std('#BFE0EA', { emissive: '#7FB7CC', emissiveIntensity: 0.25 }), 6.95, F + 1.6, K.zb + 0.1));
+    G.add(box(1.1, 0.9, 0.04, std('#2F6A55'), 6.95, F + 1.6, K.zb + 0.08));
+    const sill = std('#2F6A55');
+    for (let i = 1; i < 6; i++) G.add(box(0.03, 0.8, 0.04, sill, 6.45 + i * 0.167, F + 1.6, K.zb + 0.15)); // song cửa sổ
+    G.add(box(1.1, 0.05, 0.12, sill, 6.95, F + 1.18, K.zb + 0.13));
     const kl = new THREE.PointLight('#FFE0B0', 0, 6, 2);
-    kl.position.set(5.6, FLOOR_Y + 2.5, -1.4);
+    kl.position.set(cx, F + 2.3, cz);
     G.add(kl); this.lights.push({ light: kl, night: 5, day: 0.8 });
+    // Lu nước trước hiên bếp
+    const jar = std('#5E3B26', { roughness: 0.35 });
+    for (const [x, z, r] of [[9.05, -0.55, 0.34], [9.4, 0.25, 0.28]]) {
+      const j = sph(r, jar, x, r * 0.95, z, 14); j.scale.y = 1.15; G.add(j);
+      G.add(cyl(r * 0.6, r * 0.6, 0.04, std('#1E2A2E', { roughness: 0.1 }), x, r * 2.05, z, 14));
+    }
   }
 
   /** night: 0 (ngày) .. 1 (đêm) */
   setNight(night) {
     for (const l of this.lights) l.light.intensity = (l.day || 0) * (1 - night) + l.night * night;
     for (const e of this.emissive) e.mat.emissiveIntensity = e.base + (e.night - e.base) * night;
+  }
+
+  /** wet: 0 (khô) .. 1 (ướt sũng): ngói, gạch sân ngoài trời sẫm màu và bóng nước. */
+  setWet(wet) {
+    for (const m of this.wetMats) { m.roughness = 0.8 - 0.62 * wet; m.color.copy(m.userData.dry ??= m.color.clone()).multiplyScalar(1 - 0.38 * wet); }
   }
 }
 

@@ -57,8 +57,8 @@ export class Life {
     for (let i = 0; i < NF; i++) {
       const nearPot = i < 6; // vài con quanh chậu cây trên hiên
       this.ffBase.push(nearPot
-        ? new THREE.Vector3(rand(-4.9, -4.2), rand(0.4, 1.3), rand(-2.4, -1.8))
-        : new THREE.Vector3(rand(-12, -5.6), rand(0.25, 2.2), rand(-3, 2.5)));
+        ? new THREE.Vector3(rand(-6.9, -6.3), rand(0.75, 1.6), rand(0.7, 1.3))
+        : new THREE.Vector3(rand(-12, -8), rand(0.25, 2.2), rand(-3, 8)));
       this.ffBase[i].ph = Math.random() * 20;
     }
     const ffGeo = new THREE.BufferGeometry();
@@ -129,8 +129,9 @@ export class Life {
       if (!bfOn) continue;
       const u = b.userData;
       // Một con hay lượn gần lồng khi lồng ở ngoài sân
-      const center = u.i === 0 && c.cage.x < -5.2 ? this.v.set(c.cage.x + 0.35, c.cage.y + 0.1, c.cage.z + 0.25) : this.v.set(-8.6 + u.i * 0.7, 0.9, -1.4 + u.i * 0.5);
-      const R = u.i === 0 && c.cage.x < -5.2 ? 0.45 : 1.6;
+      const inYard = c.cage.z > 3; // lồng đang phơi ngoài sân trước
+      const center = u.i === 0 && inYard ? this.v.set(c.cage.x + 0.35, c.cage.y + 0.1, c.cage.z + 0.25) : this.v.set(-10 + u.i * 0.5, 0.9, 0.5 + u.i * 0.6);
+      const R = u.i === 0 && inYard ? 0.45 : 1.6;
       u.prev.copy(b.position);
       b.position.set(
         center.x + Math.sin(t * u.w[0] + u.ph[0]) * R + Math.sin(t * 1.7 + u.ph[1]) * 0.15,

@@ -12,8 +12,9 @@ export class Cage {
     this.group = new THREE.Group();
     this.picks = [];
     const { R, H, TOP } = CAGE;
-    const bamboo = new THREE.MeshStandardMaterial({ color: '#C9A158', roughness: 0.6 });
-    const bambooDark = new THREE.MeshStandardMaterial({ color: '#9C7432', roughness: 0.65 });
+    // Tre vót nhẵn, phết dầu bóng: lớp phủ trong (clearcoat) cho ánh sáng chạy dọc nan
+    const bamboo = new THREE.MeshPhysicalMaterial({ color: '#C9A158', roughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.28 });
+    const bambooDark = new THREE.MeshPhysicalMaterial({ color: '#9C7432', roughness: 0.55, clearcoat: 0.6, clearcoatRoughness: 0.3 });
 
     // Nan lồng: đoạn thẳng rồi uốn cong về đỉnh
     const bars = [];
@@ -47,7 +48,7 @@ export class Cage {
     hook.position.y = TOP + 0.04; this.group.add(hook);
 
     // Khay đáy
-    const tray = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.018, R + 0.012, 0.05, 48), new THREE.MeshStandardMaterial({ map: wood('#6E4524'), roughness: 0.7 }));
+    const tray = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.018, R + 0.012, 0.05, 48), new THREE.MeshPhysicalMaterial({ map: wood('#6E4524'), bumpMap: wood('#6E4524'), bumpScale: 1.2, roughness: 0.6, clearcoat: 0.4, clearcoatRoughness: 0.35 }));
     tray.position.y = -0.022; tray.castShadow = true; tray.receiveShadow = true;
     tray.userData.pick = 'clean';
     this.group.add(tray); this.picks.push(tray);
@@ -70,7 +71,7 @@ export class Cage {
     this.food = this.makeCup(-0.12, 0.1, 0.15, 'staple');
     this.waterCup = this.makeCup(0.12, 0.17, 0.15, 'water'); // ngang tầm cầu cao để chim cúi uống được
     this.foodFill = this.makeFill(this.food, new THREE.MeshStandardMaterial({ color: '#9A6B3C', roughness: 0.95 }));
-    this.waterFill = this.makeFill(this.waterCup, new THREE.MeshStandardMaterial({ color: '#7DB9DA', roughness: 0.1, transparent: true, opacity: 0.85 }));
+    this.waterFill = this.makeFill(this.waterCup, new THREE.MeshPhysicalMaterial({ color: '#7DB9DA', roughness: 0.04, ior: 1.33, transparent: true, opacity: 0.8 }));
 
     // Chỗ chim cúi mổ: miệng cóng và đồ tươi (Bird tự chọn chỗ đứng trên cầu cho vừa tầm mỏ)
     this.targets = {
@@ -132,14 +133,15 @@ export class Cage {
   makeCup(x, y, z, pick) {
     const g = new THREE.Group();
     g.position.set(x, y, z);
-    const porcelain = new THREE.MeshStandardMaterial({ color: '#F4F2EC', roughness: 0.25 });
+    // Sứ tráng men: lớp men trong bóng loáng phản chiếu quanh nhà
+    const porcelain = new THREE.MeshPhysicalMaterial({ color: '#F4F2EC', roughness: 0.35, clearcoat: 1, clearcoatRoughness: 0.06 });
     const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.022, 0.034, 24, 1, true), porcelain);
     cup.material.side = THREE.DoubleSide; cup.castShadow = true;
     const bottom = new THREE.Mesh(new THREE.CircleGeometry(0.022, 24), porcelain);
     bottom.rotation.x = -Math.PI / 2; bottom.position.y = -0.016;
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.0022, 6, 28), new THREE.MeshStandardMaterial({ color: '#2F55A0', roughness: 0.3 }));
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.0022, 6, 28), new THREE.MeshPhysicalMaterial({ color: '#2F55A0', roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.06 }));
     rim.rotation.x = Math.PI / 2; rim.position.y = 0.017;
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.0262, 0.0245, 0.006, 24, 1, true), new THREE.MeshStandardMaterial({ color: '#2F55A0', side: THREE.DoubleSide }));
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.0262, 0.0245, 0.006, 24, 1, true), new THREE.MeshPhysicalMaterial({ color: '#2F55A0', side: THREE.DoubleSide, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.06 }));
     band.position.y = 0.004; band.scale.setScalar(1.005);
     for (const m of [cup, bottom, rim, band]) { m.userData.pick = pick; this.picks.push(m); g.add(m); }
     this.group.add(g);
