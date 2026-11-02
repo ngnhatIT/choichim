@@ -34,6 +34,7 @@ const morningOf = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); retu
 export class Game {
   constructor({ seed = Date.now(), bus = new EventBus(), storage, realtime = false, now = () => Date.now() } = {}) {
     this.realtime = realtime;
+    this.seed = seed;
     this.now = now;
     this.bus = bus;
     this.rng = createRng(seed);
@@ -57,8 +58,9 @@ export class Game {
     this.bus.emit('log', entry);
   }
 
-  newGame(sp, name, stage = 'truong') {
-    this.S = createState({ sp, name, stage });
+  /** opts: { mode: 'moi' | 'lau', region: 'bac' | 'trung' | 'nam', traits } (traits để test ép tính cách). */
+  newGame(sp, name, stage = 'truong', opts = {}) {
+    this.S = createState({ sp, name, stage, mode: opts.mode, region: opts.region, startAt: this.now() });
     this.pending = null;
     scheduleDay(this.S, this.rng);
     this.log('info', `${name} vừa về nhà. Lồng đang trùm áo để chim bớt sợ. Việc đầu tiên: cho thức ăn chính vào máng và thay nước sạch.`);

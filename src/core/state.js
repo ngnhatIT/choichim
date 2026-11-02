@@ -17,7 +17,7 @@ export function newToday() {
   };
 }
 
-export function createState({ sp, name, stage = 'truong' }) {
+export function createState({ sp, name, stage = 'truong', mode = 'moi', region = 'trung', startAt = 0, traits = null }) {
   const st = STAGES[stage] || STAGES.truong;
   return {
     version: 1, sp, name, stage, day: 1, t: DAY_START, weather: 'mat',
@@ -37,6 +37,12 @@ export function createState({ sp, name, stage = 'truong' }) {
     coachOff: false,        // người chơi đã tắt hướng dẫn ngày đầu
     contest: null,          // kết quả hội thi { place: 0..3 (0 = không đạt giải), day }
     schedule: {}, today: newToday(), hist: [], log: [], over: false,
+    mode,                   // 'moi' (Người mới: thấy chỉ số) | 'lau' (Người chơi lâu năm: tự đọc dấu hiệu)
+    region,                 // 'bac' | 'trung' | 'nam': thời tiết theo vùng
+    startAt,                // mốc giờ máy lúc đón chim (ms): tháng của từng ngày game
+    traits: traits || { temper: 'binh', appetite: 'binh', fire: 'binh', fav: null }, // tính cách, data/traits.js
+    known: { temper: true, appetite: true, fire: true, fav: true }, // trục tính cách người chơi đã nhận ra
+    lookDays: [],           // các ngày đã "Quan sát kỹ"
   };
 }
 
@@ -44,7 +50,7 @@ export function createState({ sp, name, stage = 'truong' }) {
 export function migrateState(S) {
   const base = createState({ sp: S.sp, name: S.name });
   for (const k of Object.keys(base)) if (S[k] === undefined) S[k] = base[k];
-  for (const k of ['today', 'risk', 'feeder', 'water']) {
+  for (const k of ['today', 'risk', 'feeder', 'water', 'traits', 'known']) {
     for (const j of Object.keys(base[k])) if (S[k][j] === undefined) S[k][j] = base[k][j];
   }
   return S;

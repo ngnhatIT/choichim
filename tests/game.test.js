@@ -495,3 +495,19 @@ describe('Thời gian thực: đồng hồ game theo giờ máy', () => {
     expect(g.blocked('water')).toBeNull();
   });
 });
+
+describe('Lồng Tre - tùy chọn ván mới', () => {
+  it('ván mới nhận chế độ, vùng, mốc ngày; bản lưu cũ được bù mặc định', () => {
+    const g = new Game({ seed: 1, storage: null });
+    g.newGame('chaomao', 'A', 'truong', { mode: 'lau', region: 'bac' });
+    expect(g.S.mode).toBe('lau');
+    expect(g.S.region).toBe('bac');
+    expect(g.S.startAt).toBe(new Date(2026, 3, 15, 8, 0).getTime());
+    const old = JSON.parse(JSON.stringify(g.S));
+    for (const k of ['mode', 'region', 'startAt', 'traits', 'known', 'lookDays']) delete old[k];
+    g.load(old);
+    expect(g.S.mode).toBe('moi');
+    expect(g.S.region).toBe('trung');
+    expect(g.S.known.temper).toBe(true);
+  });
+});
