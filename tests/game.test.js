@@ -7,6 +7,7 @@ import { ACHIEVEMENTS, loadAchievements, readAchievements } from '../src/core/ac
 import { songLevel } from '../src/data/song.js';
 import { WEATHER, WEATHER_TABLE, rollWeather, monthOf } from '../src/data/weather.js';
 import { createRng } from '../src/core/rng.js';
+import { HOUSEHOLD_EVENTS } from '../src/core/householdEvents.js';
 import { sickPhase } from '../src/core/illness.js';
 
 /** Người chơi mẫu: chăm đúng cách, chọn phương án tốt cho mọi sự kiện. */
@@ -673,7 +674,7 @@ describe('Lồng Tre - bệnh và liệu trình', () => {
     g.S.health = 1; g.S.water.level = 0; g.S.hunger = 0; g.S.feeder.amt = 0;
     adv(g, 120);
     expect(g.pending?.type).toBe('over');
-    expect(g.pending.sick.type).toBe('tieu_chay');
+    expect(g.pending.sick).toBe(null); // đang điều trị bệnh không trừ máu: chết vì đói khát, không đổ cho bệnh
   });
 });
 
@@ -730,5 +731,22 @@ describe('Lồng Tre - dấu hiệu phụ', () => {
     expect(more.length).toBe(2);
     expect(more[0]).toMatch(/đục/);
     expect(more[1]).toMatch(/Khay/);
+  });
+});
+
+describe('Lồng Tre - sửa sau review', () => {
+  it('mỗi ván mới trong cùng trang là một con chim tính khác', () => {
+    const g = new Game({ seed: 5, storage: null });
+    const seen = new Set();
+    for (let i = 0; i < 6; i++) { g.newGame('chaomao', 'X'); seen.add(JSON.stringify(g.S.traits)); }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it('sự kiện trời nồm không xảy ra ngày mưa rào mùa hè', () => {
+    const nom = HOUSEHOLD_EVENTS.find((e) => e.id === 'nom');
+    const S = { weather: 'rao', feeder: { amt: 50 } };
+    expect(nom.when(S)).toBe(false);
+    expect(nom.when({ ...S, weather: 'nom' })).toBe(true);
+    expect(nom.when({ ...S, weather: 'mua' })).toBe(true);
   });
 });
