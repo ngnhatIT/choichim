@@ -67,8 +67,9 @@ export class Modals {
 
   isOpen() { return this.overlay.classList.contains('show'); }
 
-  open(html, handlers = {}, { dismissible = true, cls = '' } = {}) {
+  open(html, handlers = {}, { dismissible = true, cls = '', onClose = null } = {}) {
     this.stopPreview();
+    this.onClose = onClose;
     if (!this.isOpen()) this.ret = document.activeElement;
     this.handlers = { close: () => this.close(), ...handlers };
     this.dismissible = dismissible;
@@ -90,6 +91,9 @@ export class Modals {
     const r = this.ret;
     this.ret = null;
     if (r?.isConnected && r !== document.body) r.focus({ preventScroll: true });
+    const f = this.onClose;
+    this.onClose = null;
+    f?.();
   }
 
   // Khi hộp thoại mở, phần còn lại của trang không nhận focus và bị trình đọc màn hình bỏ qua
@@ -160,7 +164,7 @@ export class Modals {
   }
 
   /* ---------- Bắt đầu ---------- */
-  start({ saved, thumbs, onNew, onContinue }) {
+  start({ saved, thumbs, onNew, onContinue, onAccount, email }) {
     this.thumbs = thumbs || this.thumbs;
     let pick = null, age = 'truong', region = 'trung', mode = 'moi';
     const cards = SPECIES_ORDER.map((k) => {
@@ -175,6 +179,7 @@ export class Modals {
     }).join('');
     const S0 = saved && !saved.over ? saved : null;
     const cont = S0 ? `<div class="cont">${this.thumb(S0.sp + (S0.stage === 'gia' ? ':gia' : isYoung(S0) ? ':non' : ''), 'bc-img')}<div><b>${esc(S0.name)}</b><span>${SPECIES[S0.sp]?.name || ''}, đang ở ngày ${S0.day}/${TOTAL_DAYS}</span></div><button class="btn btn-primary" data-do="continue" data-autofocus>${icon('play')}Tiếp tục nuôi</button></div>` : '';
+    const acct = onAccount ? `<div class="acct"><span class="acct-ic">${icon(email ? 'check' : 'notebook')}</span><div class="acct-txt"><b>${email ? 'Đã đăng nhập' : 'Lưu ván lên mạng'}</b><span>${email ? esc(email) + ' · tải ván đã lưu về máy này.' : 'Đăng nhập hoặc tạo tài khoản để chơi tiếp trên máy khác. Không bắt buộc, vẫn chơi bình thường nếu bỏ qua.'}</span></div><button class="btn${email ? '' : ' btn-primary'}" data-do="acct">${email ? 'Mở tài khoản' : 'Đăng nhập / Tạo tài khoản'}</button></div>` : '';
     const step2 = () => {
       const P = SPECIES[pick];
       if (!P.wild) { $('#step2').innerHTML = ''; return ageStep($('#step2')); }
@@ -212,7 +217,7 @@ export class Modals {
       target.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'nearest' });
     };
     this.open(`<header class="start-hero"><div class="hero-art">${CAGE_ART}</div><div><span class="eyebrow">Giả lập nuôi chim cảnh 3D</span><h2 id="mTitle">Lồng Tre</h2><p class="lead">Nuôi một chú chim cảnh trong ${TOTAL_DAYS} ngày trong một ngôi nhà Việt. Cho ăn, thay nước, phơi nắng, tắm, chọn chỗ treo lồng: mỗi quyết định đều có hậu quả như ngoài đời, và nhật ký giải thích vì sao.</p></div></header>
-      ${cont}<h3>${icon('bird')}${S0 ? 'Hoặc chọn một chú chim mới' : 'Chọn một chú chim'}</h3><div class="species">${cards}</div><div id="step2"></div>${this.achievementsHtml()}`, {
+      ${cont}${acct}<h3>${icon('bird')}${S0 ? 'Hoặc chọn một chú chim mới' : 'Chọn một chú chim'}</h3><div class="species">${cards}</div><div id="step2"></div>${this.achievementsHtml()}`, {
       pick: (k, btn) => {
         pick = k;
         this.box.querySelectorAll('.sp-pick').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
@@ -234,6 +239,7 @@ export class Modals {
       },
       go: () => { const n = ($('#nm')?.value || '').trim() || 'Chim'; this.close(); onNew(pick, n, age, { region, mode }); },
       continue: () => { this.close(); onContinue(); },
+      acct: () => onAccount(),
     }, { dismissible: false, cls: 'wide' });
   }
 

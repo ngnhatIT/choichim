@@ -24,6 +24,7 @@ export class Club {
     this.getState = getState;
     this.onLoad = onLoad;
     this.email = '';
+    this.back = null; // màn cần quay lại khi đóng hộp thoại (màn bắt đầu)
     this.seq = 0; // bỏ kết quả mạng về muộn khi người chơi đã chuyển màn khác
   }
 
@@ -34,10 +35,10 @@ export class Club {
     const nav = this.signedIn
       ? `<nav class="hb-nav" aria-label="Hội chim"><div>${tabs.map(([k, l]) => `<button data-do="tab" data-arg="${k}" aria-current="${k === this.tab}">${l}</button>`).join('')}</div></nav>`
       : '';
-    this.m.open(`<h2 id="mTitle">Hội chim</h2>${nav}<div class="hb">${body}</div><p class="note" role="status" id="clubMsg">${msg ? icon('info') + `<span>${esc(msg)}</span>` : ''}</p>`, {
-      tab: (k) => this.open(k),
+    this.m.open(`<h2 id="mTitle">${this.signedIn ? 'Hội chim' : 'Đăng nhập / Tạo tài khoản'}</h2>${nav}<div class="hb">${body}</div><p class="note" role="status" id="clubMsg">${msg ? icon('info') + `<span>${esc(msg)}</span>` : ''}</p>`, {
+      tab: (k) => this.open(k, this.back),
       ...handlers,
-    });
+    }, { onClose: () => this.back?.() });
   }
 
   say(msg) { const el = $('#clubMsg'); if (el) el.innerHTML = icon('info') + `<span>${esc(msg)}</span>`; }
@@ -57,7 +58,8 @@ export class Club {
     }
   }
 
-  async open(tab = this.tab || 'posts') {
+  async open(tab = this.tab || 'posts', back = null) {
+    this.back = back;
     this.tab = tab;
     this.show('<p class="lead">Đang tải…</p>');
     const u = await this.net(this.user());
@@ -72,39 +74,34 @@ export class Club {
     return this.tab === 'account' ? this.account() : this.posts();
   }
 
-  /* ---------- Đăng nhập bằng mã gửi qua email ---------- */
-  login(sent = false) {
-    const body = sent
-      ? `<p class="lead">Đã gửi mã 6 số tới <b>${esc(this.email)}</b>. Nhập mã để đăng nhập.</p>
-         <div class="row"><input class="input" id="otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" aria-label="Mã 6 số" data-autofocus>
-         <button class="btn btn-primary" data-do="verify">${icon('check')}Đăng nhập</button><button class="btn btn-ghost" data-do="back">Đổi email</button></div>`
-      : `<p class="lead">Đăng nhập bằng email để chơi tiếp ván của mình trên máy khác. Game gửi mã đăng nhập, không cần mật khẩu. Mục Hỏi đáp chỉ dành cho nhóm bạn được mời.</p>
-         <div class="row"><input class="input" id="em" type="email" autocomplete="email" aria-label="Email" value="${esc(this.email)}" data-autofocus>
-         <button class="btn btn-primary" data-do="send">${icon('bell')}Gửi mã</button></div>${CAPTCHA_SITE_KEY ? '<div id="cf"></div>' : ''}`;
-    this.show(body, {
-      send: async () => {
-        this.email = $('#em').value.trim().toLowerCase();
-        if (!/^\S+@\S+\.\S+$/.test(this.email)) return this.say('Email chưa đúng.');
-        if (CAPTCHA_SITE_KEY && !this.captcha) return this.say('Chờ xác minh chống spam xong rồi bấm lại.');
-        const r = await this.net(sb.auth.signInWithOtp({ email: this.email, options: { captchaToken: this.captcha || undefined } }));
-        this.captcha = null; // mỗi mã Turnstile chỉ dùng được một lần
-        if (r) this.login(true);
-        else if (CAPTCHA_SITE_KEY) this.login(false);
-      },
-      verify: async () => {
-        const token = $('#otp').value.trim();
-        if (!/^\d{6}$/.test(token)) return this.say('Mã gồm 6 chữ số.');
-        const r = await this.net(sb.auth.verifyOtp({ email: this.email, token, type: 'email' }));
-        if (r) this.open('posts');
-      },
-      back: () => this.login(false),
-      key: (e) => { if (e.key === 'Enter') this.m.handlers[sent ? 'verify' : 'send']?.(); },
+  /* ---------- Đăng nhập / tạo tài khoản bằng email + mật khẩu ---------- */
+  login() {
+    this.show(`<p class="lead">Đăng nhập để chơi tiếp ván của mình trên máy khác. Chưa có tài khoản thì bấm Tạo tài khoản. Mục Hỏi đáp chỉ dành cho nhóm bạn được mời.</p>
+      <div class="club-form"><input class="input" id="em" type="email" autocomplete="email" placeholder="Email" aria-label="Email" value="${esc(this.email)}" data-autofocus>
+      <input class="input" id="pw" type="password" autocomplete="current-password" placeholder="Mật khẩu (ít nhất 6 ký tự)" aria-label="Mật khẩu">
+      <div class="row"><button class="btn btn-primary" data-do="signin">${icon('check')}Đăng nhập</button><button class="btn btn-ghost" data-do="signup">Tạo tài khoản</button></div></div>${CAPTCHA_SITE_KEY ? '<div id="cf"></div>' : ''}`, {
+      signin: () => this.auth('signInWithPassword'),
+      signup: () => this.auth('signUp'),
+      key: (e) => { if (e.key === 'Enter') this.m.handlers.signin(); },
     });
-    if (!sent && CAPTCHA_SITE_KEY) {
+    if (CAPTCHA_SITE_KEY) {
       loadTurnstile().then((ts) => {
         if ($('#cf')) ts.render('#cf', { sitekey: CAPTCHA_SITE_KEY, callback: (t) => { this.captcha = t; } });
       }).catch(() => this.say('Không tải được bước xác minh chống spam. Kiểm tra mạng rồi mở lại.'));
     }
+  }
+
+  async auth(method) {
+    this.email = $('#em').value.trim().toLowerCase();
+    const password = $('#pw').value;
+    if (!/^\S+@\S+\.\S+$/.test(this.email)) return this.say('Email chưa đúng.');
+    if (password.length < 6) return this.say('Mật khẩu cần ít nhất 6 ký tự.');
+    if (CAPTCHA_SITE_KEY && !this.captcha) return this.say('Chờ xác minh chống spam xong rồi bấm lại.');
+    const r = await this.net(sb.auth[method]({ email: this.email, password, options: { captchaToken: this.captcha || undefined } }));
+    this.captcha = null; // mỗi mã Turnstile chỉ dùng được một lần
+    if (r?.data?.session) this.open('posts', this.back);
+    else if (r) this.say('Tài khoản đã tạo nhưng cần xác nhận email. Tắt "Confirm email" trong Supabase để đăng nhập ngay.');
+    else if (CAPTCHA_SITE_KEY) this.login();
   }
 
   /* ---------- Hỏi đáp ---------- */
@@ -178,10 +175,11 @@ export class Club {
         if (!s) return;
         if (!s.data) return this.say('Chưa có bản lưu nào trên mạng.');
         if (!confirm(`Thay ván đang chơi bằng bản lưu ngày ${s.data.data.day} của ${s.data.data.name} (lưu lúc ${when(s.data.updated_at)})?`)) return;
+        this.back = null;
         this.m.close();
         this.onLoad(s.data.data);
       },
-      out: async () => { if (await this.net(sb.auth.signOut())) this.open(); },
+      out: async () => { if (await this.net(sb.auth.signOut())) this.open(undefined, this.back); },
     });
   }
 }

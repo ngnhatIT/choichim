@@ -8,7 +8,7 @@ import { SoundEngine } from './audio/SoundEngine.js';
 import { Hud } from './ui/Hud.js';
 import { Modals } from './ui/Modals.js';
 import { Club } from './ui/Club.js';
-import { pushSave } from './net/supabase.js';
+import { pushSave, sb } from './net/supabase.js';
 
 const game = new Game({ realtime: true });
 const audio = new SoundEngine();
@@ -39,6 +39,11 @@ const club = new Club(modals, {
   onLoad: (S) => { game.load(S); world.setView('close'); saveGame(game.S); },
 });
 document.getElementById('clubBtn').addEventListener('click', () => club.open());
+let userEmail = null;
+sb.auth.onAuthStateChange((_e, s) => {
+  userEmail = s?.user?.email || null;
+  document.querySelector('#clubBtn .lbl').textContent = userEmail ? 'Tài khoản' : 'Đăng nhập';
+});
 
 game.bus.on('report', (rep) => { saveGame(game.S); pushSave(game.S).catch(() => {}); modals.report(rep, { onNext: () => game.nextDay() }); });
 game.bus.on('final', (sum) => { clearGame(); modals.final(sum, { onAgain: showStart }); });
@@ -47,10 +52,12 @@ game.bus.on('over', (info) => { clearGame(); modals.over(info, { onAgain: showSt
 // Trình duyệt chỉ cho phát âm thanh sau thao tác đầu tiên của người chơi
 for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, () => audio.unlock(), { capture: true });
 
-function showStart() {
+async function showStart() {
+  userEmail = (await sb.auth.getSession()).data.session?.user?.email || null;
   if (!thumbs) thumbs = renderBirdThumbnails();
   modals.start({
-    saved: loadGame(), thumbs,
+    saved: loadGame(), thumbs, email: userEmail,
+    onAccount: () => club.open('account', showStart),
     onNew: (sp, name, stage, opts) => { game.newGame(sp, name, stage, opts); world.setView('close'); saveGame(game.S); },
     onContinue: () => {
       game.load(loadGame());
