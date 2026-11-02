@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { Game } from '../src/core/Game.js';
 import { dailyGoals } from '../src/core/goals.js';
+import { describeSigns } from '../src/core/actions.js';
+import { SPECIES } from '../src/data/species.js';
 import { ACHIEVEMENTS, loadAchievements, readAchievements } from '../src/core/achievements.js';
 import { songLevel } from '../src/data/song.js';
 import { WEATHER, WEATHER_TABLE, rollWeather, monthOf } from '../src/data/weather.js';
@@ -715,5 +717,18 @@ describe('Lồng Tre - tính cách chim', () => {
     const b = new Game({ seed: 11, storage: null }); b.newGame('chaomao', 'A');
     expect(b.S.schedule).toEqual(a.S.schedule);
     expect(b.S.known.temper).toBe(false);
+  });
+});
+
+describe('Lồng Tre - dấu hiệu phụ', () => {
+  it('nước đục, khay đầy hiện thành dấu hiệu phụ; lồng sạch thì không có', () => {
+    const g = new Game({ seed: 3, storage: null }); g.newGame('chaomao', 'D'); g.S.schedule = {};
+    g.act('staple', { food: 'cm' }); g.act('water');
+    expect(describeSigns(g.S, SPECIES.chaomao).more).toEqual([]);
+    g.S.water.clean = 30; g.S.cage = 30; g.S.feather = 40;
+    const { more } = describeSigns(g.S, SPECIES.chaomao);
+    expect(more.length).toBe(2);
+    expect(more[0]).toMatch(/đục/);
+    expect(more[1]).toMatch(/Khay/);
   });
 });

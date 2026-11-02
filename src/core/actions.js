@@ -316,8 +316,26 @@ export function observe(S, sp) {
   return 'Quan sát kỹ: ' + out.join(' ');
 }
 
-/** Mô tả ngắn hành vi chim hiện tại, hiển thị dưới khung cảnh. */
+/**
+ * Mô tả ngắn hành vi chim hiện tại, hiển thị dưới khung cảnh: dấu hiệu chính, cộng tối đa 2 dấu hiệu phụ (`more`)
+ * để người chơi chế độ lâu năm đọc được tình hình mà không cần thanh chỉ số.
+ */
 export function describeSigns(S, sp) {
+  const main = mainSign(S, sp);
+  const h = hourOf(S.t);
+  const more = [
+    [S.water.clean < 40, 'Nước trong cóng đục, có cặn.'],
+    [S.water.level < 20 && S.water.level >= 5, 'Cóng nước gần cạn.'],
+    [S.cage < 40, 'Khay phân đầy, bắt đầu có mùi.'],
+    [(!S.feeder.type || S.feeder.amt < 15) && S.hunger >= 20, S.feeder.type ? 'Máng cám sắp hết.' : 'Máng trống.'],
+    [S.fresh?.spoiled, 'Đồ tươi trong lồng đã ôi, ruồi bu.'],
+    [S.feather < 50 && !S.molt, 'Lông xơ, kém bóng.'],
+    [sp.skill === 'song' && h >= 10 && h < 18 && !S.today.sang && !S.sick && !S.molt && !S.covered && S.newDays === 0, 'Cả buổi sáng chim chưa hót tiếng nào.'],
+  ].filter(([on]) => on).map(([, t]) => t).slice(0, 2);
+  return { ...main, more };
+}
+
+function mainSign(S, sp) {
   const h = hourOf(S.t);
   const ph = sickPhase(S);
   if (ph === 'som') return { text: DISEASES[S.sick.type].early };
