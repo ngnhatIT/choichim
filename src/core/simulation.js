@@ -1,6 +1,6 @@
 import { DISEASES, RISK_KEYS } from '../data/diseases.js';
 import { FOODS } from '../data/foods.js';
-import { WEATHER } from '../data/weather.js';
+import { WEATHER, sunWindow } from '../data/weather.js';
 import { songLevel } from '../data/song.js';
 import { MIX_DAYS } from '../config.js';
 import { stageOf } from '../data/stages.js';
@@ -52,7 +52,7 @@ export function stepMinute(S, ctx) {
   // Đồ tươi để lâu sẽ ôi
   if (S.fresh) {
     S.fresh.age++;
-    if (!S.fresh.spoiled && S.fresh.age > 240) {
+    if (!S.fresh.spoiled && S.fresh.age > (W.hot || W.humid ? 150 : 240)) { // nóng, nồm: đồ tươi mau ôi
       S.fresh.spoiled = true;
       ctx.log('warn', `${FOODS[S.fresh.f].name} để trong lồng đã ôi, ruồi bắt đầu bu. Nên dọn lồng.`);
     }
@@ -62,8 +62,13 @@ export function stepMinute(S, ctx) {
   // Nắng
   if (inSun) {
     T.sunAll++;
-    if (h < 9.5) T.sunGood++;
-    else if (h < 11 || h >= 15) T.sunGood += 0.5;
+    const [s0, s1] = sunWindow(W); // trời rét: nắng tốt từ 8 giờ, sớm hơn chỉ thêm lạnh
+    if (h >= s0 && h < s1) T.sunGood++;
+    else if (h >= s1 && (h < 11 || h >= 15)) T.sunGood += 0.5;
+    if (W.key === 'ret' && h < 7.5) {
+      S.risk.cam_lanh += 0.3;
+      if (!T.coldSun) { T.coldSun = true; ctx.log('warn', 'Trời rét, sáng sớm chưa có nắng ấm mà gió lạnh: đợi khoảng 8 giờ nắng lên rồi hẵng mang chim ra.'); }
+    }
     if (h >= 11 && h < 15) { T.heat++; S.risk.say_nang += W.hot ? 5 : 3; S.mood -= 0.05; }
     if (T.sunAll > sp.sun[1] + 20) S.mood -= 0.04;
   }
@@ -83,7 +88,7 @@ export function stepMinute(S, ctx) {
 
   // Vệ sinh kém sinh nguy cơ bệnh
   if (S.water.clean < 35) S.risk.tieu_chay += (35 - S.water.clean) / 40;
-  if (S.cage < 30) S.risk.ran_mat += (30 - S.cage) / 40;
+  if (S.cage < 30) S.risk.ran_mat += ((30 - S.cage) / 40) * (W.humid ? 1.5 : 1); // nồm ẩm, mạt sinh sôi nhanh
   if (S.water.level <= 0) {
     if (!S.dryWarned) { S.dryWarned = true; ctx.log('bad', 'Cóng nước đã cạn! Chim nhỏ mất nước rất nhanh, thay nước ngay.'); }
     S.health -= 0.08; S.mood -= 0.08;

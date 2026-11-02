@@ -3,6 +3,8 @@ import { Game } from '../src/core/Game.js';
 import { dailyGoals } from '../src/core/goals.js';
 import { ACHIEVEMENTS, loadAchievements, readAchievements } from '../src/core/achievements.js';
 import { songLevel } from '../src/data/song.js';
+import { WEATHER, WEATHER_TABLE, rollWeather, monthOf } from '../src/data/weather.js';
+import { createRng } from '../src/core/rng.js';
 
 /** Người chơi mẫu: chăm đúng cách, chọn phương án tốt cho mọi sự kiện. */
 function playGoodDay(g, opts) {
@@ -509,5 +511,75 @@ describe('Lồng Tre - tùy chọn ván mới', () => {
     expect(g.S.mode).toBe('moi');
     expect(g.S.region).toBe('trung');
     expect(g.S.known.temper).toBe(true);
+  });
+});
+
+/** Tiến thời gian, tự chọn phương án đúng cho sự kiện trong nhà. */
+function adv(g, n) {
+  const end = g.S.t + n;
+  while (g.S.t < end && !g.S.over) {
+    while (g.pending?.type === 'event') g.chooseEvent(0);
+    if (!g.running) break;
+    g.advance(end - g.S.t);
+  }
+}
+function toNight(g) {
+  adv(g, Math.max(0, 18 * 60 - g.S.t));
+  while (g.pending?.type === 'event') g.chooseEvent(0);
+  if (g.running) g.act('sleep');
+  return g.pending?.report;
+}
+
+describe('Lồng Tre - thời tiết theo vùng, tháng', () => {
+  it('thời tiết theo vùng, tháng: chỉ ra kiểu trong bảng, ngày 1 dịu', () => {
+    const rng = createRng(5);
+    for (const r of ['bac', 'trung', 'nam']) for (let m = 1; m <= 12; m++) {
+      const keys = Object.keys(WEATHER_TABLE[r][m]);
+      for (let i = 0; i < 30; i++) expect(keys).toContain(rollWeather(2, rng, r, m));
+      const d1 = WEATHER[rollWeather(1, rng, r, m)];
+      expect(d1.rain || d1.hot).toBe(false);
+    }
+  });
+
+  it('tháng tính từ ngày đón chim, không từ giờ hiện tại', () => {
+    const S = { startAt: new Date(2026, 0, 30).getTime() };
+    expect(monthOf(S, 1)).toBe(1);
+    expect(monthOf(S, 3)).toBe(2);
+    expect(monthOf({ startAt: 0 }, 5)).toBe(4);
+  });
+
+  it('rét: nắng tốt dời sang 8:00–10:30', () => {
+    const sun = (from) => {
+      const g = new Game({ seed: 2, storage: null });
+      g.newGame('chaomao', 'R'); g.S.schedule = {}; g.S.weather = 'ret'; g.act('cover');
+      adv(g, from - g.S.t); g.act('sun'); adv(g, 25);
+      return g.S.today.sunGood;
+    };
+    expect(sun(7 * 60)).toBe(0);
+    expect(sun(8 * 60)).toBeGreaterThanOrEqual(20);
+  });
+
+  it('nồm, nóng: đồ tươi ôi sau 150 phút; trời mát thì chưa', () => {
+    const spoiled = (w) => {
+      const g = new Game({ seed: 2, storage: null });
+      g.newGame('chaomao', 'R'); g.S.schedule = {}; g.S.weather = w;
+      g.act('fresh', { food: 'chuoi' }); adv(g, 146);
+      return g.S.fresh.spoiled;
+    };
+    expect(spoiled('nom')).toBe(true);
+    expect(spoiled('nong')).toBe(true);
+    expect(spoiled('mat')).toBe(false);
+  });
+
+  it('ngày nồm chưa đổ cám mới thì bị phạt, đã đổ thì không', () => {
+    const night2 = (refill) => {
+      const g = new Game({ seed: 4, storage: null });
+      g.newGame('chaomao', 'N'); g.act('staple', { food: 'cm' }); toNight(g); g.nextDay();
+      g.S.weather = 'nom'; g.S.schedule = {};
+      if (refill) g.act('staple', { food: 'cm' });
+      return toNight(g).items.some((i) => i.label === 'Cám để qua ngày nồm');
+    };
+    expect(night2(false)).toBe(true);
+    expect(night2(true)).toBe(false);
   });
 });

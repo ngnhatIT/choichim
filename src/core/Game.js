@@ -2,6 +2,7 @@ import { SPECIES } from '../data/species.js';
 import { DAY_START, FORCE_SLEEP, TOTAL_DAYS } from '../config.js';
 import { EventBus } from './EventBus.js';
 import { moltDays } from '../data/stages.js';
+import { rollWeather, monthOf } from '../data/weather.js';
 import { createRng } from './rng.js';
 import { createState, migrateState } from './state.js';
 import { ACHIEVEMENTS, earnedAchievements, readAchievements, saveAchievements } from './achievements.js';
@@ -62,6 +63,7 @@ export class Game {
   newGame(sp, name, stage = 'truong', opts = {}) {
     this.S = createState({ sp, name, stage, mode: opts.mode, region: opts.region, startAt: this.now() });
     this.pending = null;
+    this.S.weather = rollWeather(1, this.rng, this.S.region, monthOf(this.S, 1));
     scheduleDay(this.S, this.rng);
     this.log('info', `${name} vừa về nhà. Lồng đang trùm áo để chim bớt sợ. Việc đầu tiên: cho thức ăn chính vào máng và thay nước sạch.`);
     this.log('tip', 'Chim mới về cần yên tĩnh khoảng 3 ngày: giữ áo lồng, hạn chế trò chuyện, chưa nên tắm ngay ngày đầu.');

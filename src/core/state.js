@@ -14,6 +14,7 @@ export function newToday() {
     sang: 0,       // số hiệp hót
     cafe: false,   // đã đi cà phê chim hoặc hội thi (nghe chim khác hót)
     overFire: false, // đã nhắc chim quá lửa hôm nay
+    coldSun: false,  // đã nhắc phơi nắng quá sớm ngày rét
   };
 }
 

@@ -1,7 +1,7 @@
 import { DISEASES } from '../data/diseases.js';
 import { STAPLES } from '../data/foods.js';
 import { LOCATIONS } from '../data/locations.js';
-import { WEATHER, rollWeather } from '../data/weather.js';
+import { WEATHER, rollWeather, monthOf, weatherName, sunWindow } from '../data/weather.js';
 import { SONG_LEVELS, songLevel } from '../data/song.js';
 import { stageOf, isYoung, moltDays } from '../data/stages.js';
 import { DAY_START, LATE_SLEEP, TOTAL_DAYS } from '../config.js';
@@ -9,6 +9,9 @@ import { feederAcceptance } from './simulation.js';
 import { newToday } from './state.js';
 import { clamp } from './util.js';
 import { scheduleDay } from './householdEvents.js';
+
+/** Khung nắng tốt bằng chữ, ví dụ "6:00–9:30". */
+export const sunText = (W) => sunWindow(W).map((h) => `${Math.floor(h)}:${h % 1 ? '30' : '00'}`).join('–');
 
 /** Chấm điểm một ngày và áp dụng hệ quả qua đêm. Trả về báo cáo. */
 export function endDay(S, ctx, forced) {
@@ -61,7 +64,7 @@ export function endDay(S, ctx, forced) {
   } else add(false, S.cage < 60 ? 'Lồng bẩn' : 'Chưa dọn khay phân', 'Nên dọn khay phân mỗi ngày: phân để lâu sinh rận mạt, vi khuẩn.');
 
   if (W.rain) add(null, 'Tắm nắng', 'Trời mưa, không phơi nắng. Giữ lồng nơi khô ráo, kín gió.');
-  else if (T.sunGood < sp.sun[0]) { add(false, 'Thiếu nắng sớm', `${sp.name} cần khoảng ${sp.sun[0]}–${sp.sun[1]} phút nắng buổi sáng (trước 9 giờ 30 là tốt nhất).`); S.vigor -= 4; S.feather -= 2; }
+  else if (T.sunGood < sp.sun[0]) { add(false, 'Thiếu nắng sớm', `${sp.name} cần khoảng ${sp.sun[0]}–${sp.sun[1]} phút nắng buổi sáng (${sunText(W)} là tốt nhất).`); S.vigor -= 4; S.feather -= 2; }
   else if (T.sunAll > sp.sun[1] + 30) { add(false, 'Phơi nắng quá lâu', 'Phơi quá lâu khiến chim mệt, mất nước.'); S.mood -= 6; }
   else add(true, 'Tắm nắng sáng đủ', `Khoảng ${Math.round(T.sunGood)} phút nắng tốt.`);
   if (T.heat >= 10) add(false, 'Phơi nắng trưa gắt', 'Nắng 11–15 giờ rất dễ gây sốc nhiệt.');
@@ -107,6 +110,10 @@ export function endDay(S, ctx, forced) {
   if (S.feeder.amt > 0) {
     S.feeder.days++;
     if (S.feeder.days >= 2) { S.risk.tieu_chay += 25; add(false, 'Thức ăn để quá lâu', 'Cám, hạt để từ hôm trước dễ ẩm mốc. Thay mới mỗi ngày.'); }
+  }
+  if (W.humid && !T.refill && S.feeder.amt > 0) {
+    S.risk.tieu_chay += 25;
+    add(false, 'Cám để qua ngày nồm', 'Trời nồm cám hút ẩm, vón cục, dễ mốc: ngày nồm phải đổ cám mới, đổ vừa đủ ăn, cất bao cám kín.');
   }
   if (S.feeder.mixFrom && S.feeder.mixLeft > 0) {
     S.feeder.mixLeft--;
@@ -159,7 +166,7 @@ function growSong(S, ctx) {
 
 export function startDay(S, ctx) {
   const { sp, rng } = ctx;
-  S.day++; S.t = DAY_START; S.weather = rollWeather(S.day, rng);
+  S.day++; S.t = DAY_START; S.weather = rollWeather(S.day, rng, S.region, monthOf(S));
   S.today = newToday(); S.pos = S.loc; S.wet = 0;
   S.singUntil = 0; S.sayUntil = 0; // mốc phút của hôm qua, không để chim "hót" hay bóng chữ sót sang sáng nay
   scheduleDay(S, rng);
@@ -174,7 +181,10 @@ export function startDay(S, ctx) {
     if (S.stage === 'chuyen') ctx.log('good', `${S.name} đã khoác bộ lông trưởng thành sau lần thay lông đầu đời. Từ nay trông như chim lớn, dù giọng vẫn còn đang tập.`);
   }
   const W = WEATHER[S.weather];
-  ctx.log('info', `Trời sáng. ${W.name} ${W.temp}°C. Mở áo lồng cho chim đón ngày mới.${W.hot ? ' Ngày nóng: chim uống nhiều nước, tránh nắng trưa.' : ''}${W.rain ? ' Trời mưa lạnh: không tắm muộn, giữ lồng kín gió.' : ''}`);
+  const tip = { nong: ' Ngày nóng: chim uống nhiều nước, tránh nắng trưa.', mua: ' Trời mưa lạnh: không tắm muộn, giữ lồng kín gió.',
+    ret: ' Rét: phơi nắng khi nắng đã lên (8:00–10:30), che gió hiên, trùm áo sớm.', nom: ' Nồm ẩm: cám dễ mốc, đổ cám mới, dọn đồ tươi sớm.',
+    rao: ' Mưa rào: không phơi nắng được, tắm vẫn bình thường.' }[S.weather] || '';
+  ctx.log('info', `Trời sáng. ${weatherName(S)} ${W.temp}°C. Mở áo lồng cho chim đón ngày mới.${tip}`);
   if (S.loc === 'bep') ctx.log('warn', `Lồng vẫn đang treo ở ${LOCATIONS.bep.name.toLowerCase()}. Nên chuyển ra hiên hoặc phòng khách.`);
 }
 
