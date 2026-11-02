@@ -268,7 +268,7 @@ export class SoundEngine {
   /** Giờ (phút trong ngày) của đồng hồ nghe chim. */
   get relaxClock() {
     const A = this.relaxAt;
-    if (!A) return this.S?.t ?? 360;
+    if (!A || this.realClock) return this.S?.t ?? 360; // realClock: game theo giờ thật, nghe chim cũng theo giờ thật
     const now = Date.now();
     let dt = (now - A.real) / 1000;
     A.real = now;

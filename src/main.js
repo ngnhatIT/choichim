@@ -1,7 +1,7 @@
 import './ui/styles.css';
 import { Game } from './core/Game.js';
 import { saveGame, loadGame, clearGame } from './core/save.js';
-import { TICK_MS, SPEEDS } from './config.js';
+import { TICK_MS } from './config.js';
 import { World } from './render/World.js';
 import { renderBirdThumbnails } from './render/thumbnails.js';
 import { SoundEngine } from './audio/SoundEngine.js';
@@ -10,8 +10,9 @@ import { Modals } from './ui/Modals.js';
 import { Club } from './ui/Club.js';
 import { pushSave } from './net/supabase.js';
 
-const game = new Game();
+const game = new Game({ realtime: true });
 const audio = new SoundEngine();
+audio.realClock = game.realtime;
 const modals = new Modals(game, audio);
 const PICK_TO_ACTION = { staple: 'staple', water: 'water', clean: 'clean', cover: 'cover', look: 'look' };
 const world = new World(document.getElementById('scene'), {
@@ -57,9 +58,8 @@ function showStart() {
   });
 }
 
-setInterval(() => {
-  if (game.running && !modals.isOpen() && !document.hidden && hud.speed > 0) game.advance(SPEEDS[hud.speed]);
-}, TICK_MS);
+// Đồng hồ game theo giờ máy: mỗi nhịp chạy bù phần đã trôi (kể cả lúc tắt game hay để tab nền)
+setInterval(() => game.sync(), TICK_MS);
 setInterval(() => { if (game.S && !game.S.over) saveGame(game.S); }, 15000);
 window.addEventListener('pagehide', () => { if (game.S && !game.S.over) saveGame(game.S); });
 

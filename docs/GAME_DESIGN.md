@@ -7,7 +7,7 @@ Dạy người mới nuôi chim những nguyên tắc chăm sóc quan trọng nh
 ## Vòng chơi
 
 - Một ngày trong game chạy từ 06:00 đến khi cho chim ngủ (từ 18:00) hoặc tự kết thúc lúc 22:00.
-- Tốc độ: chậm (2 phút game mỗi 0,4 giây thật, khoảng 3 phút thật mỗi ngày) và nhanh (6 phút game mỗi nhịp). Mỗi hành động tiêu tốn thời gian game.
+- Thời gian: đồng hồ game theo giờ thật, một ngày game là một ngày ngoài đời (06:00–22:00, đêm chim ngủ). Không tua, không dừng; tắt game thời gian vẫn trôi và mọi hậu quả vẫn tính, mở lại thì game chạy bù. Việc làm có hiệu lực ngay; việc dài (đi thú y, một số việc nhà) giữ người chơi bận đúng số phút thật.
 - Cuối ngày có bảng chấm điểm ✓/✗ kèm bài học; điểm ngày = số mục đạt / (đạt + không đạt).
 - "Việc hôm nay" (`core/goals.js`, `dailyGoals`) là danh sách việc khớp với cách chấm điểm: thức ăn chính đúng loài thay mới, thay nước, đồ tươi hoặc mồi tươi (tùy loài), khoáng cho vẹt khi đã 5 ngày chưa có, nắng sớm (bỏ khi mưa), tắm khi đến hạn, dọn lồng lau ẩm, trò chuyện hoặc giọng mồi (ngày chim mới về thì thay bằng "để yên tĩnh": trò chuyện không quá 2 lần), trùm áo cho ngủ trước 20:30.
 - 14 ngày. Ngày 1–3: chim mới về. Ngày 6–10: thay lông. Ngày 14: tổng kết, danh hiệu, thành tựu.
