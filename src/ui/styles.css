@@ -102,6 +102,8 @@ kbd {
   -webkit-backdrop-filter: blur(16px) saturate(1.15); backdrop-filter: blur(16px) saturate(1.15);
   box-shadow: var(--shadow), var(--rim);
 }
+/* Card đồ họa yếu: kính mờ phải làm nhòe lại cảnh 3D mỗi khung hình; nền bảng đã gần đục nên bỏ đi gần như không khác */
+body.lite *, body.lite *::before, body.lite *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 
 /* ---------- Nút chung ---------- */
 .btn {

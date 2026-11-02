@@ -18,6 +18,7 @@ const PICK_TO_ACTION = { staple: 'staple', water: 'water', clean: 'clean', cover
 const world = new World(document.getElementById('scene'), {
   onPick: (id) => { if (!modals.isOpen() && PICK_TO_ACTION[id]) hud.trigger(PICK_TO_ACTION[id]); },
 });
+document.body.classList.toggle('lite', world.weak); // card yếu: bỏ kính mờ trên cảnh 3D
 world.setVoice(() => audio.voiceLevel());
 world.setSinging(() => audio.relaxSinging);
 world.setClock(() => (audio.relaxOn ? audio.relaxClock : null));
