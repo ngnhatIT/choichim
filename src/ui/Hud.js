@@ -25,7 +25,7 @@ const STATS = [
 ];
 const GROUPS = [
   ['Ăn uống', ['staple', 'fresh', 'water']], ['Vệ sinh', ['clean', 'bath']], ['Chỗ treo lồng', ['sun', 'cover', 'move']],
-  ['Gắn bó', ['talk', 'tutor', 'look']], ['Khác', ['vet', 'wait', 'sleep']],
+  ['Gắn bó', ['talk', 'tutor', 'look']], ['Khác', ['vet', 'sleep']], // không có "Chờ 30 phút": thời gian theo giờ thật, không tua
 ];
 const KEYS = { staple: '1', fresh: '2', water: '3', clean: '4', bath: '5', sun: '6', cover: '7', move: '8', talk: '9', tutor: '0', look: 'Q', vet: 'Y', wait: 'C', sleep: 'N' };
 const BY_KEY = Object.fromEntries(Object.entries(KEYS).map(([id, k]) => [k, id]));
@@ -85,12 +85,7 @@ export class Hud {
     this.pop = $('#sndPop');
 
     $('#seal').innerHTML = icon('cage');
-    const speedIc = ['pause', 'play', 'fast'];
-    document.querySelectorAll('[data-speed]').forEach((b) => {
-      b.innerHTML = icon(speedIc[b.dataset.speed]);
-      b.addEventListener('click', () => this.setSpeed(+b.dataset.speed));
-    });
-    $('#paused').innerHTML = icon('pause') + 'Đang dừng';
+    $('#paused').innerHTML = icon('moon') + 'Chờ trời sáng';
     $('#hbBtn').innerHTML = icon('book') + '<span class="lbl">Sổ tay</span>';
     $('#hbBtn').setAttribute('aria-label', 'Sổ tay');
     $('#clubBtn').innerHTML = icon('chatstar') + '<span class="lbl">Hội chim</span>';
@@ -100,7 +95,7 @@ export class Hud {
     $('#focusBtn').addEventListener('click', () => this.toggleFocus());
     $('#focusPill').addEventListener('click', () => this.toggleFocus(false));
     $('#relaxBtn').innerHTML = icon('note') + '<span class="lbl">Nghe chim</span>';
-    $('#relaxBtn').setAttribute('aria-label', 'Nghe chim hót, tạm dừng thời gian');
+    $('#relaxBtn').setAttribute('aria-label', 'Nghe chim hót');
     $('#relaxBtn').addEventListener('click', () => this.setRelax(true));
     this.initAfk();
     this.needsEl = $('#needs');
@@ -153,6 +148,12 @@ export class Hud {
       if (this.game.S) this.renderGoals(this.game.S, SPECIES[this.game.S.sp]);
       $(`#goalList [data-goal="${b.dataset.goal}"]`)?.focus(); // vẽ lại xong vẫn giữ chỗ bàn phím
     });
+    // Màn rộng: bảng chỉ số gọn mặc định, chi tiết (giọng hót, máng, chỗ treo) mở khi cần
+    $('#statsMore').addEventListener('click', (e) => {
+      const on = $('#pStats').classList.toggle('more');
+      e.currentTarget.setAttribute('aria-expanded', on);
+      e.currentTarget.textContent = on ? 'Thu gọn' : 'Xem giọng hót, máng ăn, chỗ treo';
+    });
     $('#coachX').addEventListener('click', () => { if (this.game.S) this.game.S.coachOff = true; this.coach.hidden = true; });
     this.syncView();
     this.syncSound();
@@ -173,6 +174,7 @@ export class Hud {
       });
     });
     this.setTab('actions');
+    $('#goals').open = this.narrow.matches; // màn rộng: danh sách việc hôm nay thu lại, chỉ còn tiêu đề và thanh tiến độ
     // Trên điện thoại các bảng là tabpanel của thanh tab; màn rộng không có thanh tab nên bỏ vai trò này
     const roles = () => document.querySelectorAll('[data-panel]').forEach((p) => {
       if (this.narrow.matches) { p.setAttribute('role', 'tabpanel'); p.setAttribute('aria-labelledby', 'tab-' + p.dataset.panel); }
@@ -192,8 +194,6 @@ export class Hud {
 
   setSpeed(v) {
     this.speed = v;
-    document.querySelectorAll('[data-speed]').forEach((x) => x.setAttribute('aria-pressed', String(+x.dataset.speed === v)));
-    $('#paused').hidden = v !== 0;
   }
 
   /** Chế độ ngắm chim: ẩn các bảng cho cảnh 3D và con chim làm chính (bong bóng nhu cầu vẫn hiện). */
@@ -209,7 +209,7 @@ export class Hud {
   pillText() {
     const S = this.game.S;
     const html = this.relax
-      ? icon('note') + `<span>${esc(this.audio.relaxNote || `Đang nghe ${S?.name || 'chim'} hót.`)} <small aria-hidden="true">Giờ nghe ${fmtTime(this.audio.relaxClock)}, thời gian chăm chim tạm dừng.</small> <b>Chạm để quay lại</b></span>`
+      ? icon('note') + `<span>${esc(this.audio.relaxNote || `Đang nghe ${S?.name || 'chim'} hót.`)} <small aria-hidden="true">Giờ nghe ${fmtTime(this.audio.relaxClock)}${this.game.realtime ? '' : ', thời gian chăm chim tạm dừng'}.</small> <b>Chạm để quay lại</b></span>`
       : icon('eye') + '<span>Đang ngắm chim. Bấm hoặc nhấn <kbd>H</kbd> để hiện lại các bảng</span>';
     setHtml($('#focusPill'), html);
   }
@@ -319,7 +319,6 @@ export class Hud {
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable) return;
       if (e.key === 'Escape') { this.hideTip?.(); if (!this.pop.hidden) this.closePop(true); return; }
       if (this.modals.isOpen()) return;
-      if (e.code === 'Space') { e.preventDefault(); this.setSpeed(this.speed === 0 ? 1 : 0); return; }
       const k = e.code.startsWith('Digit') ? e.code.slice(5) : e.key.length === 1 ? e.key.toUpperCase() : '';
       if (k === 'M') this.toggleMute();
       else if (k === 'V') this.toggleView();
@@ -394,7 +393,7 @@ export class Hud {
     this.renderGoals(S, sp);
     this.renderNeeds(S);
     this.introRelax(S);
-    setHtml($('#ticker'), S.log.slice(0, this.narrow.matches ? 40 : 3).map(entryHtml).join(''));
+    setHtml($('#ticker'), S.log.slice(0, this.narrow.matches ? 40 : 1).map(entryHtml).join(''));
   }
 
   renderTop(S, sp) {
@@ -406,6 +405,7 @@ export class Hud {
     const p = Math.max(0, Math.min(1, (S.t - DAY_START) / (FORCE_SLEEP - DAY_START))).toFixed(2);
     if (p !== this.dayP) { this.dayP = p; this.segs[S.day - 1]?.style.setProperty('--p', p); }
     setText($('#timeTxt'), fmtTime(S.t));
+    $('#paused').hidden = !this.game.waiting;
     const h = hourOf(S.t);
     const phase = isNight(S.t) ? 'night' : h < 7 ? 'dawn' : h >= 17.5 ? 'dusk' : 'day';
     if (phase !== this.phase) {

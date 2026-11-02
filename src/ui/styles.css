@@ -289,6 +289,19 @@ kbd {
 .cups dt { display: flex; align-items: center; gap: 7px; color: var(--ink-2); }
 .cups dt .i { width: 16px; height: 16px; margin-top: 1px; color: var(--ink-3); }
 .cups dd { margin: 0; font-weight: 600; min-width: 0; }
+.more-btn {
+  display: block; width: 100%; margin-top: 12px; padding: 7px 10px; border: 0; border-radius: 10px; cursor: pointer;
+  background: var(--sunken); color: var(--ink-2); font: inherit; font-size: 0.78rem; font-weight: 650;
+}
+.more-btn:hover { color: var(--ink); }
+/* Màn rộng: bảng chỉ số gọn, chỉ còn tên chim, dấu hiệu và các thanh; chi tiết mở bằng nút */
+@media (min-width: 961px) {
+  .panel-stats:not(.more) :is(.voice, .cups) { display: none; }
+  .panel-stats { width: 290px; }
+  .panel-actions { width: 330px; }
+  .panel-log { width: min(560px, calc(100vw - 680px)); }
+}
+@media (max-width: 960px) { .more-btn { display: none; } }
 
 /* ---------- Việc làm ---------- */
 .goals { margin: 0 0 14px; border-radius: 13px; background: var(--sunken); }
@@ -770,8 +783,8 @@ body:has(.overlay.show) .toasts { top: auto; bottom: calc(16px + env(safe-area-i
   .who, .paused { display: none; }
   .bamboo i { width: 6px; }
   .tb-btn .lbl { display: none; }
-  .panel-log { left: 342px; right: 368px; width: auto; transform: none; }
-  .toasts { left: 342px; right: 368px; width: auto; transform: none; }
+  .panel-log { left: 314px; right: 354px; width: auto; transform: none; }
+  .toasts { left: 314px; right: 354px; width: auto; transform: none; }
 }
 @media (max-height: 820px) and (min-width: 961px) {
   .act { min-height: 56px; padding: 8px 5px 6px; gap: 3px; }

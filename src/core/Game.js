@@ -1,5 +1,5 @@
 import { SPECIES } from '../data/species.js';
-import { FORCE_SLEEP, TOTAL_DAYS } from '../config.js';
+import { DAY_START, FORCE_SLEEP, TOTAL_DAYS } from '../config.js';
 import { EventBus } from './EventBus.js';
 import { moltDays } from '../data/stages.js';
 import { createRng } from './rng.js';
@@ -24,9 +24,17 @@ import { endDay, finalSummary, startDay } from './dayCycle.js';
  *  achievement — [{ id, name, desc, em }] các thành tựu vừa mở
  *
  * `storage`: nơi lưu thành tựu (mặc định localStorage; null = chỉ giữ trong bộ nhớ, dùng cho test).
+ * `realtime`: đồng hồ game theo giờ máy, một ngày game là một ngày thật. Thời gian vẫn trôi khi tắt game
+ *   (mở lại thì `sync()` chạy bù), việc làm có hiệu lực ngay, việc dài (đi thú y) giữ người chơi bận đúng số phút thật.
+ *   Tắt (mặc định) thì thời gian chỉ trôi qua `advance()`, như các test.
  */
+const MIN = 60000, DAY_MS = 24 * 60 * MIN;
+const morningOf = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime() + DAY_START * MIN; };
+
 export class Game {
-  constructor({ seed = Date.now(), bus = new EventBus(), storage } = {}) {
+  constructor({ seed = Date.now(), bus = new EventBus(), storage, realtime = false, now = () => Date.now() } = {}) {
+    this.realtime = realtime;
+    this.now = now;
     this.bus = bus;
     this.rng = createRng(seed);
     this.storage = storage;
@@ -55,11 +63,42 @@ export class Game {
     scheduleDay(this.S, this.rng);
     this.log('info', `${name} vừa về nhà. Lồng đang trùm áo để chim bớt sợ. Việc đầu tiên: cho thức ăn chính vào máng và thay nước sạch.`);
     this.log('tip', 'Chim mới về cần yên tĩnh khoảng 3 ngày: giữ áo lồng, hạn chế trò chuyện, chưa nên tắm ngay ngày đầu.');
+    if (this.realtime) this.anchorClock();
     this.bus.emit('change');
+  }
+
+  /** Gắn ngày game hiện tại vào giờ máy, không chạy bù (ván mới, hoặc bản lưu cũ chưa có giờ thật). */
+  anchorClock() {
+    const S = this.S, now = this.now(), m6 = morningOf(now);
+    const t = DAY_START + Math.floor((now - m6) / MIN);
+    if (t >= DAY_START && t < FORCE_SLEEP) { S.dayAt = m6; S.t = t; }
+    else { S.dayAt = t < DAY_START ? m6 : m6 + DAY_MS; S.t = DAY_START; } // đang đêm: ngày 1 bắt đầu lúc 06:00 tới
+  }
+
+  /** Đang đêm, chờ 06:00 để sang ngày mới. */
+  get waiting() { return this.realtime && !!this.S && this.now() < this.S.dayAt; }
+
+  /**
+   * Chạy mô phỏng bù cho khớp giờ máy. Gọi đều đặn; lúc vắng nhà (bù hơn vài phút) sự kiện trong nhà
+   * trôi qua không ai xử lý, tổng kết ngày tự qua khi trời đã sáng hôm sau.
+   */
+  sync() {
+    const S = this.S;
+    if (!this.realtime || !S || S.over) return;
+    for (let guard = 0; guard < 4 * TOTAL_DAYS; guard++) {
+      if (this.pending?.type === 'report' && this.now() >= S.dayAt + DAY_MS) this.nextDay();
+      if (this.pending || S.over) return;
+      const target = Math.min(FORCE_SLEEP, DAY_START + Math.floor((this.now() - S.dayAt) / MIN));
+      if (target <= S.t) return;
+      this.away = target - S.t > 2;
+      this.advance(target - S.t);
+      this.away = false;
+    }
   }
 
   load(S) {
     this.S = migrateState(S);
+    if (this.realtime && this.S.dayAt == null) this.anchorClock();
     this.pending = null;
     this.bus.emit('change');
     // Lưu lúc đang xem tổng kết ngày: mở lại tổng kết thay vì chơi lại buổi tối
@@ -79,7 +118,7 @@ export class Game {
       stepMinute(S, this.ctx);
       if (S.health <= 0) { this.gameOver(); break; }
       const ev = dueEvent(S);
-      if (ev) { this.pending = { type: 'event', event: ev }; this.bus.emit('event', ev); break; }
+      if (ev && !this.away) { this.pending = { type: 'event', event: ev }; this.bus.emit('event', ev); break; }
       if (S.t >= FORCE_SLEEP) { this.finishDay(true); break; }
     }
     this.unlock(earnedAchievements(S, this.sp));
@@ -88,6 +127,9 @@ export class Game {
 
   blocked(id) {
     if (!this.running) return 'Đang chờ.';
+    if (this.waiting) return 'Đêm rồi, chim đang ngủ. Ngày mới bắt đầu lúc 06:00.';
+    const left = Math.ceil(((this.S.busyUntil || 0) - this.now()) / MIN);
+    if (this.realtime && left > 0) return `Đang bận việc trước (đi thú y, lo việc nhà...), còn ${left} phút nữa mới rảnh.`;
     const a = ACTIONS[id];
     return a.blocked ? a.blocked(this.S, this.sp) : null;
   }
@@ -103,8 +145,15 @@ export class Game {
     const mins = ACTIONS[id].run(this.S, this.ctx, payload) || 0;
     this.bus.emit('act', { id, payload });
     if (this.S.health <= 0) { this.gameOver(); return true; }
-    this.advance(mins);
+    this.spend(mins);
     return true;
+  }
+
+  /** Thời gian một việc tiêu tốn: chạy ngay (không thời gian thực), hoặc theo giờ thật: việc từ 1 giờ trở lên giữ người chơi bận. */
+  spend(mins) {
+    if (!this.realtime) { this.advance(mins); return; }
+    if (mins >= 60) this.S.busyUntil = this.now() + mins * MIN;
+    this.advance(0);
   }
 
   chooseEvent(index) {
@@ -113,7 +162,7 @@ export class Game {
     this.pending = null;
     const mins = ev.choices[index].apply(this.S, this.ctx) || 0;
     if (this.S.health <= 0) { this.gameOver(); return; }
-    this.advance(mins);
+    this.spend(mins);
   }
 
   finishDay(forced) {
@@ -139,6 +188,7 @@ export class Game {
       this.bus.emit('final', summary);
     } else {
       this.pending = null;
+      if (this.realtime) this.S.dayAt += DAY_MS;
       startDay(this.S, this.ctx);
       this.unlock(earnedAchievements(this.S, this.sp, { moltEnded: this.S.day === moltDays(this.S)[1] }));
     }

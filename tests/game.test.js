@@ -453,3 +453,45 @@ describe('Thay lông theo tuổi', () => {
     expect(old.length).toBeGreaterThan(adult.length);
   });
 });
+
+describe('Thời gian thực: đồng hồ game theo giờ máy', () => {
+  const at = (d, h, m = 0) => new Date(2026, 10, d, h, m).getTime();
+  const make = (start) => {
+    let now = start;
+    const g = new Game({ seed: 5, storage: null, realtime: true, now: () => now });
+    return { g, set: (ms) => { now = ms; } };
+  };
+
+  it('ván mới bắt đầu đúng giờ thật, thời gian trôi theo phút thật, không chạy bù nửa ngày đã qua', () => {
+    const { g, set } = make(at(2, 15, 0));
+    g.newGame('chaomao', 'T');
+    expect(g.S.t).toBe(15 * 60);
+    set(at(2, 15, 30)); g.sync();
+    expect(g.S.t).toBe(15 * 60 + 30);
+  });
+
+  it('tắt game qua đêm: tự tổng kết ngày, sáng hôm sau chạy tiếp tới giờ hiện tại', () => {
+    const { g, set } = make(at(2, 8, 0));
+    g.newGame('chaomao', 'T');
+    g.act('staple', { food: 'cm' }); g.act('water');
+    set(at(3, 7, 0)); g.sync();
+    expect(g.S.day).toBe(2);
+    expect(g.S.t).toBe(7 * 60);
+    expect(g.pending).toBeNull();
+  });
+
+  it('ban đêm phải chờ trời sáng, việc dài (thú y) giữ người chơi bận đúng số phút thật', () => {
+    const { g, set } = make(at(2, 23, 0));
+    g.newGame('chaomao', 'T');
+    expect(g.waiting).toBe(true);
+    expect(g.act('water')).toBe(false);
+    set(at(3, 6, 10)); g.sync();
+    expect(g.waiting).toBe(false);
+    expect(g.S.t).toBe(6 * 60 + 10);
+    g.act('vet');
+    expect(g.S.t).toBe(6 * 60 + 10); // làm xong ngay, đồng hồ không nhảy
+    expect(g.blocked('water')).toMatch(/bận/);
+    set(at(3, 8, 0)); g.sync();
+    expect(g.blocked('water')).toBeNull();
+  });
+});

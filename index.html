@@ -31,12 +31,6 @@
     </div>
     <div class="controls">
       <div class="ctl-group">
-        <div class="seg" role="group" aria-label="Tốc độ thời gian">
-          <button data-speed="0" aria-pressed="false" aria-label="Dừng thời gian" aria-keyshortcuts="Space" data-tip="Dừng (phím cách)"></button>
-          <button data-speed="1" aria-pressed="true" aria-label="Tốc độ chậm" data-tip="Chậm"></button>
-          <button data-speed="2" aria-pressed="false" aria-label="Tốc độ nhanh" data-tip="Nhanh"></button>
-        </div>
-        <span class="sep" aria-hidden="true"></span>
         <div class="snd">
           <button class="tb-btn" id="sndBtn" aria-expanded="false" aria-controls="sndPop" aria-keyshortcuts="M" data-tip="Âm thanh (M)"></button>
           <div class="pop" id="sndPop" hidden>
@@ -47,7 +41,7 @@
           </div>
         </div>
         <button class="tb-btn" id="viewBtn" aria-keyshortcuts="V" data-tip="Đổi góc nhìn (V)"></button>
-        <button class="tb-btn" id="relaxBtn" aria-keyshortcuts="L" data-tip="Nghe chim hót, tạm dừng thời gian (L)"></button>
+        <button class="tb-btn" id="relaxBtn" aria-keyshortcuts="L" data-tip="Nghe chim hót (L)"></button>
         <button class="tb-btn" id="focusBtn" aria-keyshortcuts="H" aria-pressed="false" data-tip="Ngắm chim, ẩn bảng (H)"></button>
         <button class="tb-btn" id="hbBtn" aria-keyshortcuts="S" data-tip="Sổ tay nuôi chim (S)"></button>
         <button class="tb-btn" id="clubBtn" data-tip="Hội chim: hỏi đáp với nhóm bạn, lưu ván lên mạng"></button>
@@ -71,6 +65,7 @@
     <div class="stats" id="stats"></div>
     <div class="voice" id="voice"></div>
     <dl class="cups" id="cups"></dl>
+    <button class="more-btn" id="statsMore" type="button" aria-expanded="false">Xem giọng hót, máng ăn, chỗ treo</button>
   </aside>
 
   <aside class="panel panel-actions" id="pActions" data-panel="actions" aria-label="Việc làm">

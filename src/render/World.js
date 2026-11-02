@@ -204,7 +204,7 @@ export class World {
   setView(v) {
     this.view = v;
     const c = this.cageWorld(new THREE.Vector3());
-    if (v === 'wide') this.flyTo(new THREE.Vector3(0.6, 4.4, 10.5), new THREE.Vector3(-0.3, 1.3, -0.8));
+    if (v === 'wide') this.flyTo(new THREE.Vector3(-2.8, 6.0, 12.2), new THREE.Vector3(-1.6, 1.2, -0.6)); // từ cổng nhìn vào: nhà rường, bể cạn, sân vườn
     else {
       // Màn hình dọc thì lùi camera xa hơn để thấy trọn lồng
       const tall = this.camera.aspect < 1, far = tall ? 1.15 / Math.max(0.45, this.camera.aspect) : 1;

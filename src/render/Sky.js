@@ -25,7 +25,7 @@ function sample(table, h) {
 }
 
 // Vùng có mái (hiên, trong nhà): mưa không rơi vào
-const underRoof = (x, z) => x > -5.5 && x < 7.6 && z > -3 && z < 2.05;
+const underRoof = (x, z) => x > -6.2 && x < 8.1 && z > -3.6 && z < 2.5;
 
 export class Sky {
   constructor(scene) {

@@ -137,6 +137,81 @@ export function grass() {
   }, [18, 18]);
 }
 
+/** Sân gạch Bát Tràng lát so le, rêu bám mạch. */
+export function brickPaving(repeat) {
+  return canvasTexture('brick', 256, 256, (g, w) => {
+    g.fillStyle = '#6E4A35'; g.fillRect(0, 0, w, w);
+    const reds = ['#A8603F', '#9C5536', '#B26C49', '#94503A'];
+    for (let y = 0; y < w; y += 32) {
+      for (let x = (y / 32) % 2 ? -32 : 0; x < w; x += 64) {
+        g.fillStyle = reds[Math.floor(Math.random() * reds.length)];
+        g.fillRect(x + 2, y + 2, 60, 28);
+      }
+    }
+    for (let i = 0; i < 160; i++) { // rêu xanh trong mạch gạch
+      g.fillStyle = `rgba(70,95,45,${0.15 + Math.random() * 0.25})`;
+      g.fillRect(Math.random() * w, Math.floor(Math.random() * 8) * 32, 3 + Math.random() * 8, 2);
+    }
+    noise(g, w, w, 0.06);
+  }, repeat);
+}
+
+/** Vách gỗ nhà rường kiểu "thượng song hạ bản": trên chấn song, dưới ván kín. */
+export function woodPanel(repeat) {
+  return canvasTexture('wpanel', 256, 256, (g, w) => {
+    g.fillStyle = '#5A3220'; g.fillRect(0, 0, w, w);
+    g.fillStyle = '#6E3E26'; g.fillRect(14, 140, w - 28, 104); // ván dưới
+    g.strokeStyle = '#3F2214'; g.lineWidth = 3; g.strokeRect(24, 150, w - 48, 84);
+    g.fillStyle = '#24140C'; g.fillRect(14, 14, w - 28, 112); // khoảng tối sau song
+    g.fillStyle = '#7A4A2E';
+    for (let x = 20; x < w - 14; x += 22) g.fillRect(x, 14, 9, 112);
+    g.fillStyle = '#4A2818'; g.fillRect(0, 126, w, 14); g.fillRect(0, 0, w, 14); g.fillRect(0, 244, w, 12);
+    noise(g, w, w, 0.05);
+  }, repeat);
+}
+
+/** Lá cây xén (chè tàu, bụi rậm): xanh đậm lốm đốm. */
+export function leafy(base = '#3E6B2F', repeat = [1, 1]) {
+  return canvasTexture('leafy' + base, 128, 128, (g, w) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, w);
+    for (let i = 0; i < 900; i++) {
+      g.fillStyle = ['rgba(20,40,15,.35)', 'rgba(120,160,70,.35)', 'rgba(60,100,40,.4)'][i % 3];
+      g.beginPath(); g.ellipse(Math.random() * w, Math.random() * w, 2 + Math.random() * 3, 1.2 + Math.random() * 2, Math.random() * 3, 0, Math.PI * 2); g.fill();
+    }
+  }, repeat);
+}
+
+/** Tàu lá cau: sống lá giữa, lá chét xẻ hai bên (nền trong suốt, dùng alphaTest). */
+export function palmFrond() {
+  return canvasTexture('frond', 64, 256, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    g.strokeStyle = '#4E6E2A'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(w / 2, h); g.lineTo(w / 2, 0); g.stroke();
+    for (let y = 8; y < h - 10; y += 7) {
+      const len = (w / 2 - 2) * Math.sin((y / h) * Math.PI) + 4;
+      g.strokeStyle = ['#5F8A33', '#6F9A3C', '#53792C'][(y / 7) % 3 | 0]; g.lineWidth = 3;
+      for (const s of [-1, 1]) { g.beginPath(); g.moveTo(w / 2, y); g.lineTo(w / 2 + s * len, y + 10); g.stroke(); }
+    }
+  });
+}
+
+/** Lá chuối: phiến lớn, gân song song, mép rách nhẹ (nền trong suốt). */
+export function bananaLeaf() {
+  return canvasTexture('banana', 128, 256, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    g.fillStyle = '#6E9E3A';
+    g.beginPath(); g.moveTo(w / 2, h);
+    g.bezierCurveTo(4, h * 0.75, 2, h * 0.2, w / 2, 0);
+    g.bezierCurveTo(w - 2, h * 0.2, w - 4, h * 0.75, w / 2, h); g.fill();
+    g.strokeStyle = 'rgba(40,70,20,.35)'; g.lineWidth = 1;
+    for (let y = 10; y < h; y += 6) { g.beginPath(); g.moveTo(w / 2, y); g.lineTo(4, y - 14); g.moveTo(w / 2, y); g.lineTo(w - 4, y - 14); g.stroke(); }
+    g.strokeStyle = '#C9D98A'; g.lineWidth = 4; g.beginPath(); g.moveTo(w / 2, h); g.lineTo(w / 2, 4); g.stroke();
+    g.globalCompositeOperation = 'destination-out'; // mép rách do gió
+    for (let i = 0; i < 7; i++) { const y = 30 + Math.random() * (h - 60), s = Math.random() < 0.5; g.fillRect(s ? 0 : w / 2 + 6, y, w / 2 - 6, 2); }
+    g.globalCompositeOperation = 'source-over';
+  });
+}
+
 export function noteSprite(symbol) {
   return canvasTexture('note' + symbol, 64, 64, (g, w) => {
     g.font = 'bold 52px serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
