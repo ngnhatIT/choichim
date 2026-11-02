@@ -357,6 +357,24 @@ export function scaleTexture() {
   }, [1, 3]);
 }
 
+/** Gợn nước: pháp tuyến từ vài sóng sin lệch hướng, số sóng nguyên nên lặp liền mép. */
+export function waterNormal() {
+  const t = plainTexture('waterN', 128, 128, (g, w, h) => {
+    const img = g.createImageData(w, h), T = (Math.PI * 2) / w, k = 0.12;
+    const waves = [[1, 2, 0.3], [3, -1, 1.1], [-2, 3, 2.0], [5, 4, 0.7], [-6, 1, 2.6], [7, -5, 4.1]]; // [kx, ky, pha]
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let dx = 0, dy = 0;
+      for (const [kx, ky, p] of waves) { const c = Math.cos((kx * x + ky * y) * T + p) / Math.hypot(kx, ky); dx += kx * c * k; dy += ky * c * k; }
+      const l = Math.hypot(dx, dy, 1), i = (y * w + x) * 4;
+      img.data[i] = (-dx / l * 0.5 + 0.5) * 255; img.data[i + 1] = (dy / l * 0.5 + 0.5) * 255; img.data[i + 2] = (1 / l * 0.5 + 0.5) * 255; img.data[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+  }, false);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(3, 2);
+  return t;
+}
+
 /** Bóng mờ tròn dưới chim. */
 export function shadowBlob() {
   return plainTexture('shadowblob', 64, 64, (g, w) => {

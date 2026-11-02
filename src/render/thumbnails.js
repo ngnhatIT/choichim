@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SPECIES } from '../data/species.js';
 import { Bird, stageModel } from './Bird.js';
 
@@ -15,6 +16,10 @@ export function renderBirdThumbnails() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
   const scene = new THREE.Scene();
+  // Phòng chụp ảo cho phản chiếu mềm trên lông bóng, mắt, mỏ
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.35;
   // Ánh sáng studio: đèn chính ấm, đèn hắt viền lạnh phía sau, trời đất dịu
   scene.add(new THREE.HemisphereLight('#FFF6E8', '#7A6248', 1.25));
   const key = new THREE.DirectionalLight('#FFEBD0', 2.6); key.position.set(0.6, 1.2, 1.4); scene.add(key);
@@ -50,6 +55,7 @@ export function renderBirdThumbnails() {
     scene.remove(bird.group);
     bird.dispose();
   }
+  scene.environment.dispose(); pmrem.dispose();
   renderer.dispose();
   return out;
 }

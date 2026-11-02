@@ -1,5 +1,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SPECIES } from '../data/species.js';
 import { STAPLES, FOODS } from '../data/foods.js';
 import { LOCATIONS } from '../data/locations.js';
@@ -30,6 +36,21 @@ const RHYTHM = {
 const SYL = { chaomao: 8, chichchoe: 5.5, hoami: 9, khuyen: 13, yenphung: 10, sao: 7 };
 const QUIET_EVENTS = new Set(['nhang', 'chao', 'cafe', 'thuoc', 'nom', 'thi', 'nghenoi']);
 
+// Chỉnh màu cuối (trước tone mapping): tối góc nhẹ như ống kính, tăng chút độ bão hòa
+const GRADE = {
+  uniforms: { tDiffuse: { value: null }, vignette: { value: 0.42 }, saturation: { value: 1.07 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float vignette; uniform float saturation; varying vec2 vUv;
+void main() {
+  vec4 c = texture2D(tDiffuse, vUv);
+  vec2 q = vUv - 0.5;
+  c.rgb *= 1.0 - dot(q, q) * vignette;
+  float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+  c.rgb = max(mix(vec3(l), c.rgb, saturation), 0.0);
+  gl_FragColor = c;
+}`,
+};
+
 /**
  * Cảnh 3D. Chỉ đọc trạng thái game qua `sync(S)`, không thay đổi logic.
  */
@@ -39,8 +60,9 @@ export class World {
     this.onPick = onPick;
     this.reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    // Máy yếu (ít nhân CPU hoặc ít RAM): độ phân giải thấp hơn, bóng thường thay bóng mềm
+    // Khử răng cưa bằng MSAA trên render target HDR của composer, nên canvas không cần antialias
+    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+    // Máy yếu (ít nhân CPU hoặc ít RAM): độ phân giải thấp hơn, bóng thường thay bóng mềm, không AO
     const weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
     this.maxPr = Math.min(window.devicePixelRatio, weak ? 1.25 : 1.75);
     renderer.setPixelRatio(this.maxPr);
@@ -55,18 +77,19 @@ export class World {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.03, 200);
     this.camera.position.set(-2.7, 1.95, 1.75);
+    this.initPost(weak);
 
     this.controls = new OrbitControls(this.camera, renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.minDistance = 0.55;
-    this.controls.maxDistance = 14;
+    this.controls.maxDistance = 18;
     this.controls.maxPolarAngle = Math.PI * 0.49;
     this.controls.minPolarAngle = Math.PI * 0.12;
     this.controls.enablePan = false;
     this.controls.target.set(-3.1, 1.75, -0.27);
 
-    this.sky = new Sky(this.scene);
+    this.sky = new Sky(this.scene, { shadowSize: weak ? 2048 : 4096 });
     this.house = new House();
     this.scene.add(this.house.group);
     this.life = new Life(this.scene);
@@ -125,7 +148,8 @@ export class World {
     this.view = 'close';
     this.standX = LOCATIONS.hien.x;
     this.standY = FLOOR_Y;
-    this.stand.group.position.set(this.standX, this.standY, -0.65);
+    this.standZ = LOCATIONS.hien.z;
+    this.stand.group.position.set(this.standX, this.standY, this.standZ);
     this.lastTarget = new THREE.Vector3();
     this.cageWorld(this.lastTarget);
     this.S = null;
@@ -144,13 +168,46 @@ export class World {
     renderer.setAnimationLoop(() => this.frame());
   }
 
-  /** Khung hình tụt dưới ~40/giây liên tục 3 giây thì hạ độ phân giải từng bậc (không thấp hơn 1). */
+  /**
+   * Hậu kỳ trên render target HDR (half float, MSAA 4x): cảnh → GTAO (che khuất môi trường) → bloom → chỉnh màu → tone mapping + sRGB.
+   */
+  initPost(weak) {
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    const composer = new EffectComposer(this.renderer, rt);
+    composer.addPass(new RenderPass(this.scene, this.camera));
+    if (!weak) {
+      const ao = new GTAOPass(this.scene, this.camera, 1, 1, undefined, { radius: 0.3, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: 12 });
+      ao.blendIntensity = 0.85;
+      ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+      // AO nửa độ phân giải: rẻ hơn 4 lần, khử nhiễu Poisson che được chỗ mờ
+      ao.setSize = (w, h) => GTAOPass.prototype.setSize.call(ao, Math.max(1, w >> 1), Math.max(1, h >> 1));
+      // Vật trong suốt, cắt alpha (lá, lông tơ, khói, nốt nhạc) không ghi pháp tuyến đặc: ẩn khỏi lượt AO để khỏi quầng tối hình chữ nhật
+      ao.overrideVisibility = function () {
+        this.scene.traverse((o) => {
+          this._visibilityCache.set(o, o.visible);
+          const m = o.material;
+          if (o.isPoints || o.isLine || o.isSprite || (m && (m.transparent || m.alphaTest > 0 || m.side === THREE.BackSide))) o.visible = false;
+        });
+      };
+      composer.addPass(ao);
+      this.ao = ao;
+    }
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.55, 1.1);
+    composer.addPass(this.bloom);
+    composer.addPass(new ShaderPass(GRADE));
+    composer.addPass(new OutputPass());
+    this.composer = composer;
+  }
+
+  /** Khung hình tụt dưới ~40/giây liên tục 3 giây: tắt AO trước, rồi hạ độ phân giải từng bậc (không thấp hơn 1). */
   adapt(raw) {
     if (document.hidden || raw > 0.5) return; // tab ẩn hoặc vừa quay lại: bỏ qua
     this.ft = (this.ft ?? 1 / 60) * 0.95 + raw * 0.05;
     const slow = this.ft > (this.lowFps ? 2 : 1) / 40;
     this.slowFor = slow ? (this.slowFor || 0) + raw : 0;
     const pr = this.renderer.getPixelRatio();
+    // AO đã tắt vì chậm thì giữ tắt, tránh bật tắt qua lại
+    if (this.slowFor > 3 && this.ao?.enabled && !this.lowFps) { this.ao.enabled = false; this.aoOff = true; this.slowFor = 0; return; }
     if (this.slowFor > 3 && pr > 1) {
       this.renderer.setPixelRatio(Math.max(1, pr - 0.25));
       this.resize(); this.slowFor = 0;
@@ -166,6 +223,8 @@ export class World {
   resize() {
     const w = this.container.clientWidth || 1, h = this.container.clientHeight || 1;
     this.renderer.setSize(w, h, false);
+    this.composer.setPixelRatio(this.renderer.getPixelRatio());
+    this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -204,7 +263,7 @@ export class World {
   setView(v) {
     this.view = v;
     const c = this.cageWorld(new THREE.Vector3());
-    if (v === 'wide') this.flyTo(new THREE.Vector3(-2.8, 6.0, 12.2), new THREE.Vector3(-1.6, 1.2, -0.6)); // từ cổng nhìn vào: nhà rường, bể cạn, sân vườn
+    if (v === 'wide') this.flyTo(new THREE.Vector3(-7.4, 5.0, 14.2), new THREE.Vector3(-1.2, 2.0, -0.6)); // từ cổng chếch trái nhìn vào: bình phong, bể cạn, nhà rường ba gian
     else {
       // Màn hình dọc thì lùi camera xa hơn để thấy trọn lồng
       const tall = this.camera.aspect < 1, far = tall ? 1.15 / Math.max(0.45, this.camera.aspect) : 1;
@@ -243,10 +302,12 @@ export class World {
     if (this.lowFps && (this.skipFrame = !this.skipFrame)) return; // chế độ nghe chim: vẽ cách một khung
     const raw = this.clock.getDelta(), dt = Math.min(0.05, raw);
     this.adapt(raw);
-    // Nghe chim: bóng đổ cập nhật 1/3 số khung (chim đứng hót ít di chuyển)
+    // Bóng đổ vẽ một lần mỗi khung theo yêu cầu (lượt AO cũng gọi render, không được vẽ lại bóng);
+    // nghe chim: chỉ 1/3 số khung (chim đứng hót ít di chuyển)
     const sm = this.renderer.shadowMap;
-    sm.autoUpdate = !this.lowFps;
-    if (this.lowFps && (this.shadowTick = ((this.shadowTick || 0) + 1) % 3) === 0) sm.needsUpdate = true;
+    sm.autoUpdate = false;
+    if (!this.lowFps || (this.shadowTick = ((this.shadowTick || 0) + 1) % 3) === 0) sm.needsUpdate = true;
+    if (this.ao) this.ao.enabled = !this.lowFps && !this.aoOff;
     this.now += dt;
     const S = this.S;
     const W = S ? WEATHER[S.weather] : WEATHER.mat;
@@ -255,6 +316,9 @@ export class World {
     const wind = Math.min(1.4, (W.cold || W.rain ? 0.8 : 0.15) + this.gust);
     this.sky.update(hour, W, dt, wind);
     this.house.setNight(this.sky.night);
+    // Mưa thấm ướt trong ~20 giây, tạnh thì khô chậm hơn (~2 phút)
+    this.wet = clamp01((this.wet ?? (W.rain ? 1 : 0)) + (W.rain ? dt / 20 : -dt / 120));
+    this.house.setWet(this.wet);
     if (!this.reduceMotion) this.house.update(this.now, wind);
 
     // Di chuyển cây treo lồng
@@ -264,9 +328,14 @@ export class World {
       const k = damp(dt, this.reduceMotion ? 50 : 2.6);
       this.standX += (tx - this.standX) * k;
       this.standY += (ty - this.standY) * k;
-      this.stand.group.position.set(this.standX, this.standY, -0.65);
+      this.standZ += (loc.z - this.standZ) * k;
+      this.stand.group.position.set(this.standX, this.standY, this.standZ);
     }
     this.updateSwing(dt, S, wind);
+    if (S) {
+      const loc = LOCATIONS[S.pos];
+      this.updateEnv(hour, W.rain, S.pos, Math.hypot(loc.x - this.standX, loc.z - this.standZ) < 0.05);
+    }
 
     // Camera bám theo lồng
     const target = this.cageWorld(this.tmp);
@@ -298,7 +367,7 @@ export class World {
       hour, rain: W.rain, wind, night: this.sky.night, sun: this.sky.sunK, cam: this.camera.position,
       cage: target, close: this.view === 'close', reduceMotion: this.reduceMotion,
     });
-    this.renderer.render(this.scene, this.camera);
+    this.composer.render(dt);
   }
 
   /** Suy ra cờ hành vi của chim từ trạng thái game (chỉ đọc). */
@@ -397,6 +466,28 @@ export class World {
       }
     }
     return F.on ? F.amp * Math.pow(Math.sin((Math.PI * F.t) / F.d), 0.6) : 0;
+  }
+
+  /**
+   * Ánh sáng môi trường (IBL): chụp cubemap cảnh thật từ chỗ treo lồng (thấy mái, cột, sân, trời) rồi lọc PMREM,
+   * nên sứ, nước, lông chim phản chiếu đúng nơi đang treo và dưới mái không bị ánh trời xanh hắt lên.
+   * Chỉ chụp lại khi giờ lệch 5 phút, đổi mưa/tạnh, hoặc lồng đã dời xong sang chỗ mới.
+   */
+  updateEnv(hour, rain, pos, settled) {
+    const key = `${Math.round(hour * 12)}${rain ? 'r' : ''}${pos}`;
+    if (!settled || key === this.envKey) return;
+    this.envKey = key;
+    if (!this.cubeCam) {
+      this.cubeRT = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType });
+      this.cubeCam = new THREE.CubeCamera(0.05, 150, this.cubeRT);
+      this.pmrem = new THREE.PMREMGenerator(this.renderer);
+    }
+    this.cageWorld(this.cubeCam.position);
+    this.stand.group.visible = false; // không chụp nan lồng che kín bốn phía
+    this.cubeCam.update(this.renderer, this.scene);
+    this.stand.group.visible = true;
+    this.envRT = this.pmrem.fromCubemap(this.cubeRT.texture, this.envRT);
+    this.scene.environment = this.envRT.texture;
   }
 
   /** Lồng đung đưa: lò xo tắt dần, gió thổi ngoài trời, chim đáp xuống cầu. */

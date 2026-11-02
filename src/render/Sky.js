@@ -24,15 +24,16 @@ function sample(table, h) {
   return [C(table[0][1]), C(table[0][2])];
 }
 
-// Vùng có mái (hiên, trong nhà): mưa không rơi vào
-const underRoof = (x, z) => x > -6.2 && x < 8.1 && z > -3.6 && z < 2.5;
+// Vùng có mái (nhà rường kể cả hiên, nhà ngang bếp): mưa không rơi vào
+const underRoof = (x, z) => (x > -7.7 && x < 5.7 && z > -4.7 && z < 2.7) || (x > 5.8 && x < 9.6 && z > -5.7 && z < -0.7);
 
 export class Sky {
-  constructor(scene) {
+  constructor(scene, { shadowSize = 2048 } = {}) {
     this.scene = scene;
     this.uniforms = {
       top: { value: C('#4E9BD3') }, bottom: { value: C('#D6EEF6') },
       sunDir: { value: new THREE.Vector3(0, 1, 0) }, glow: { value: C('#FFB070') }, glowK: { value: 0 }, stars: { value: 0 }, time: { value: 0 },
+      cloud: { value: 0.4 }, cloudLit: { value: C('#FFFFFF') }, cloudDark: { value: C('#8C99A8') }, drift: { value: new THREE.Vector2() },
     };
     const dome = new THREE.Mesh(
       new THREE.SphereGeometry(90, 32, 16),
@@ -40,8 +41,15 @@ export class Sky {
         side: THREE.BackSide, depthWrite: false, uniforms: this.uniforms,
         vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
         fragmentShader: `uniform vec3 top; uniform vec3 bottom; uniform vec3 sunDir; uniform vec3 glow; uniform float glowK; uniform float stars; uniform float time;
+uniform float cloud; uniform vec3 cloudLit; uniform vec3 cloudDark; uniform vec2 drift;
 varying vec3 vP;
 float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y);
+}
+float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return s; }
 void main() {
   vec3 d = normalize(vP);
   float h = clamp(d.y * 1.6 + 0.15, 0.0, 1.0);
@@ -51,7 +59,17 @@ void main() {
   if (stars > 0.0 && d.y > 0.04) {
     float r = hash(floor(d * 520.0));
     float tw = 0.65 + 0.35 * sin(time * 2.3 + r * 60.0);
-    col += vec3(step(0.9982, r) * stars * tw * smoothstep(0.04, 0.3, d.y));
+    col += vec3(step(0.9982, r) * stars * tw * smoothstep(0.04, 0.3, d.y)) * (1.0 - cloud);
+  }
+  // Mây tích: chiếu lên mặt phẳng trên cao, mép mỏng sáng, lõi dày sẫm, viền rực khi ngược nắng
+  if (d.y > 0.0) {
+    vec2 uv = d.xz / (d.y + 0.22) * 1.1 + drift;
+    float n = fbm(uv), thick = fbm(uv * 2.0 + 3.1);
+    // Sát chân trời mây nhỏ dày đặc thành vệt nhiễu: nhạt dần về chân trời, nhường chỗ cho màu trời
+    float c = smoothstep(1.0 - cloud, 1.25 - cloud * 0.9, n) * smoothstep(0.03, 0.32, d.y);
+    vec3 cc = mix(cloudLit, cloudDark, smoothstep(0.35, 0.85, thick * c));
+    cc += glow * glowK * pow(s, 5.0) * (1.0 - c) * 1.6;
+    col = mix(col, cc, c * 0.95);
   }
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
@@ -65,7 +83,7 @@ void main() {
 
     this.sun = new THREE.DirectionalLight('#FFF1D6', 3);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(shadowSize, shadowSize);
     const sc = this.sun.shadow.camera;
     sc.left = -15; sc.right = 13; sc.top = 10; sc.bottom = -6; sc.near = 1; sc.far = 90;
     this.sun.shadow.bias = -0.0004;
@@ -128,7 +146,7 @@ void main() {
     this.sunK = day && !rain ? Math.min(1, elev * 2) : 0;
     this.sunDisk.visible = day && !rain;
     this.sunDisk.position.copy(sunPos).normalize().multiplyScalar(80);
-    this.sunDisk.material.color.copy(warm);
+    this.sunDisk.material.color.copy(warm).multiplyScalar(12); // HDR: đủ sáng để bloom tỏa quầng
     this.uniforms.sunDir.value.copy(sunPos).normalize();
     this.uniforms.glow.value.copy(warm);
     this.uniforms.glowK.value = day && !rain ? 0.35 + 0.9 * (1 - Math.min(1, elev * 3)) : 0;
@@ -144,6 +162,14 @@ void main() {
     this.hemi.color.copy(top).lerp(C('#FFFFFF'), 0.5);
     // Đất hắt ánh ấm lúc bình minh, hoàng hôn
     this.hemi.groundColor.set('#6B5A3C').lerp(C('#8A5A3E'), day ? 1 - Math.min(1, elev * 3) : 0);
+
+    // Mây: trời mát lác đác, nắng nóng quang, mưa phủ kín; sáng theo nắng, ửng cam lúc sớm chiều
+    this.uniforms.cloud.value = rain ? 0.92 : weather.hot ? 0.28 : 0.46;
+    const lit = 1 - night * 0.88;
+    this.uniforms.cloudLit.value.set(rain ? '#B4BCC2' : '#FFFFFF').lerp(warm, day && !rain ? 0.55 * (1 - Math.min(1, elev * 2.5)) : 0).multiplyScalar(lit);
+    this.uniforms.cloudDark.value.copy(top).lerp(C(rain ? '#5C666F' : '#C3CAD4'), 0.65).multiplyScalar(lit * (rain ? 0.8 : 1));
+    this.uniforms.drift.value.x += dt * (0.004 + wind * 0.012);
+    this.uniforms.drift.value.y += dt * 0.002;
 
     this.rain.visible = rain;
     if (rain) {
