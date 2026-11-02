@@ -750,3 +750,74 @@ describe('Lồng Tre - sửa sau review', () => {
     expect(nom.when({ ...S, weather: 'mua' })).toBe(true);
   });
 });
+
+describe('Pháp lý loài (34.1)', () => {
+  it('mọi loài có legal.checkedAt, họa mi thuộc nhóm IIB và CITES II', () => {
+    for (const sp of Object.values(SPECIES)) expect(sp.legal.checkedAt).toMatch(/^\d{4}-\d{2}$/);
+    expect(SPECIES.hoami.legal).toMatchObject({ group: 'IIB', cites: 'II' });
+  });
+  it('ván mới với loài nhóm IIB nhắc lưu giấy tờ nguồn gốc ngay ngày 1', () => {
+    const g = new Game({ seed: 1, storage: null });
+    g.newGame('hoami', 'M');
+    expect(g.S.log.some((l) => /IIB/.test(l.text || l.msg || JSON.stringify(l)))).toBe(true);
+    g.newGame('chaomao', 'C');
+    expect(g.S.log.some((l) => /IIB/.test(l.text || l.msg || JSON.stringify(l)))).toBe(false);
+  });
+});
+
+describe('Thay lông: chuối và món tạo màu (34.5)', () => {
+  const molting = (seed = 3) => {
+    const g = new Game({ seed, storage: null });
+    g.newGame('chaomao', 'C', 'truong', { traits: { temper: 'binh', appetite: 'binh', fire: 'binh', fav: null } });
+    g.S.molt = true; g.S.newDays = 0;
+    return g;
+  };
+  it('chuối không còn bị chấm là món cấm khi thay lông', () => {
+    const g = molting();
+    g.act('fresh', { food: 'chuoi' });
+    expect(g.S.today.moltBad).toBe(false);
+    expect(g.S.today.bad).not.toContain('Chuối chín');
+  });
+  it('sâu quy vẫn bị cấm khi thay lông', () => {
+    const g = molting();
+    g.act('fresh', { food: 'sauquy' });
+    expect(g.S.today.moltBad).toBe(true);
+  });
+  it('món pigment đặt today.pigment, món thường thì không', () => {
+    const g = molting();
+    g.act('fresh', { food: 'chuoi' });
+    expect(g.S.today.pigment).toBe(false);
+    g.act('fresh', { food: 'carot' });
+    expect(g.S.today.pigment).toBe(true);
+  });
+});
+
+describe('Thay lông: hoàn thiện 34.5', () => {
+  const newBird = (mode = 'moi') => {
+    const g = new Game({ seed: 3, storage: null });
+    g.newGame('chaomao', 'C', 'truong', { mode, traits: { temper: 'binh', appetite: 'binh', fire: 'binh', fav: null } });
+    g.S.newDays = 0;
+    return g;
+  };
+  const endToday = (g) => { g.S.t = 19 * 60; g.act('sleep'); return g.pending?.report?.items || g.pending?.items || []; };
+
+  it('chuối quá 2 lần trong ngày thì có mục null "Chuối nên cho vừa phải", không phạt', () => {
+    const g = newBird(); g.S.molt = true; g.S.today.chuoi = 3;
+    const it = endToday(g).find((i) => i.label === 'Chuối nên cho vừa phải');
+    expect(it).toBeTruthy();
+    expect(it.ok).toBe(null);
+  });
+  it('chế độ lâu năm không hiện mục gợi ý chuối', () => {
+    const g = newBird('lau'); g.S.molt = true; g.S.today.chuoi = 3;
+    expect(endToday(g).some((i) => i.label === 'Chuối nên cho vừa phải')).toBe(false);
+  });
+  it('hết mùa thay lông: đủ nửa số ngày có món tạo màu thì redVent, không thì không', () => {
+    for (const [pigmentDays, want] of [[8, true], [1, false]]) {
+      const g = newBird();
+      g.S.molt = true; g.S.moltDays = 8; g.S.pigmentDays = pigmentDays;
+      for (let i = 0; i < 14 && g.S.molt && !g.S.over; i++) { g.S.today.pigment = want; endToday(g); if (g.pending?.type === 'report') g.nextDay(); }
+      expect(g.S.molt).toBe(false);
+      expect(g.S.redVent).toBe(want);
+    }
+  });
+});

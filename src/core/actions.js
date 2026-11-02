@@ -62,6 +62,8 @@ export const ACTIONS = {
         S.hunger += F.fill; S.mood += v === 2 ? 6 : 3 * traitK(S, 'likeK');
         if (v === 2) { S.vigor += 2; S.trust += 1; }
         if (F.cat === 'fruit') T.fresh++;
+        if (F.pigment) T.pigment = true;
+        if (food === 'chuoi') T.chuoi++;
         if (F.cat === 'protein' && !(food === 'sauquy' && isYoung(S))) { T.protein++; S.lastProtein = S.day; } // sâu quy không tính là mồi mềm cho chim non
         ctx.log('good', `${F.name}: ${note}`);
       }

@@ -72,7 +72,9 @@ export const HANDBOOK = [
       'Chim trưởng thành thay lông mỗi năm, thường vào mùa thu; chim yếu và hót ít.',
       'Tắm nắng, tắm nước đều, dinh dưỡng đủ đạm và vitamin.',
       'Không mang chim đi thi, đi chọi, không đổi lồng trong lúc thay lông.',
-      'Chào mào thay lông nên tránh sâu, chuối, cám kích lửa vì lông mới dễ quăn.',
+      'Chào mào thay lông nên tránh sâu quy và cám kích lửa vì lông mới dễ quăn. Giới nuôi đồng thuận về sâu quy.',
+      'Chuối thì còn tranh cãi: nhiều người kiêng khi chim thay lông, nhiều người vẫn cho ăn vừa phải. Game không phạt chuối, chỉ khuyên cho vừa phải.',
+      'Cà rốt hấp, thanh long ruột đỏ, ớt chín, cà chua, đu đủ giàu sắc tố, giúp lông mới (nhất là lông dưới đuôi chào mào) lên màu đỏ đẹp.',
     ],
   },
   {
@@ -94,6 +96,9 @@ export const HANDBOOK = [
       'Chỉ thị 04/CT-TTg (2022) yêu cầu các giải pháp cấp bách bảo tồn chim hoang dã, chim di cư.',
       'Mua chim để phóng sinh cũng gián tiếp nuôi nạn bẫy chim.',
       'Người mới nên chọn loài nuôi sinh sản như vẹt yến phụng, hoặc chim từ trại nuôi sinh sản có giấy tờ.',
+      'Họa mi (Garrulax canorus) thuộc nhóm IIB trong danh mục loài nguy cấp, quý, hiếm và Phụ lục II của CITES. Chỉ nuôi chim sinh sản tại cơ sở có mã số, nhận kèm giấy tờ nguồn gốc và làm thủ tục với Kiểm lâm.',
+      'Chích chòe than (Copsychus saularis) khác chích chòe lửa (Copsychus malabaricus). Chích chòe lửa thuộc nhóm IIB, người mới hay nhầm hai loài này nên hỏi kỹ trước khi mua.',
+      'Danh mục loài được sửa định kỳ. Thông tin trong game đối chiếu lần gần nhất tháng 11/2026, hãy kiểm tra quy định hiện hành trước khi nuôi.',
     ],
   },
 ];

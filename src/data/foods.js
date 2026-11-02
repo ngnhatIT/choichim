@@ -12,8 +12,11 @@ export const STAPLES = {
 
 export const FOODS = {
   chuoi:    { name: 'Chuối chín', em: '🍌', cat: 'fruit', fill: 18, mesh: { shape: 'banana', color: '#F2D24B' } },
-  ot:       { name: 'Ớt chín, cà chua', em: '🌶️', cat: 'fruit', fill: 12, mesh: { shape: 'chili', color: '#D23A26' } },
-  tao:      { name: 'Táo, đu đủ cắt nhỏ', em: '🍎', cat: 'fruit', fill: 15, mesh: { shape: 'cube', color: '#F0C987' } },
+  // pigment: món giàu sắc tố đỏ, cam; giúp lông mới lên màu khi chim thay lông.
+  ot:       { name: 'Ớt chín, cà chua', em: '🌶️', cat: 'fruit', fill: 12, pigment: true, mesh: { shape: 'chili', color: '#D23A26' } },
+  tao:      { name: 'Táo, đu đủ cắt nhỏ', em: '🍎', cat: 'fruit', fill: 15, pigment: true, mesh: { shape: 'cube', color: '#F0C987' } },
+  carot:    { name: 'Cà rốt hấp', em: '🥕', cat: 'fruit', fill: 12, pigment: true, mesh: { shape: 'chili', color: '#E8832A' } },
+  thanhlong: { name: 'Thanh long ruột đỏ', em: '🐉', cat: 'fruit', fill: 14, pigment: true, mesh: { shape: 'cube', color: '#C2305F' } },
   rau:      { name: 'Rau cải xanh', em: '🥬', cat: 'fruit', fill: 10, mesh: { shape: 'leaf', color: '#4E9A3A' } },
   caocao:   { name: 'Cào cào', em: '🦗', cat: 'protein', fill: 20, mesh: { shape: 'insect', color: '#7C9A3C' } },
   de:       { name: 'Dế', em: '🪲', cat: 'protein', fill: 20, mesh: { shape: 'insect', color: '#3B2A1E' } },
