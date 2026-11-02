@@ -54,5 +54,6 @@ export function migrateState(S) {
   for (const k of ['today', 'risk', 'feeder', 'water', 'traits', 'known']) {
     for (const j of Object.keys(base[k])) if (S[k][j] === undefined) S[k][j] = base[k][j];
   }
+  if (S.sick && !S.sick.phase) S.sick = { left: 0, dosesLeft: 0, dosedToday: false, relapsed: false, ...S.sick, phase: 'ro' }; // bản lưu cũ: bệnh đã phát rõ
   return S;
 }

@@ -1,10 +1,11 @@
-import { DISEASES, RISK_KEYS } from '../data/diseases.js';
+import { RISK_KEYS } from '../data/diseases.js';
 import { FOODS } from '../data/foods.js';
 import { WEATHER, sunWindow } from '../data/weather.js';
 import { songLevel } from '../data/song.js';
 import { MIX_DAYS } from '../config.js';
 import { stageOf } from '../data/stages.js';
 import { clamp, hourOf } from './util.js';
+import { catchIllness, stepIllness } from './illness.js';
 
 /** Mức chấp nhận thức ăn đang có trong máng (tính cả giai đoạn trộn dần). */
 export function feederAcceptance(S, sp) {
@@ -16,15 +17,6 @@ export function feederAcceptance(S, sp) {
     return now * (1 - w) + (sp.staple[f.mixFrom] ?? 0) * w;
   }
   return now;
-}
-
-export function getSick(S, ctx, key) {
-  const d = DISEASES[key];
-  S.sick = { type: key, since: S.t };
-  S.sickCount++;
-  S.risk[key] = 0;
-  S.health -= 5;
-  ctx.log('bad', `${S.name} có dấu hiệu bệnh: ${d.name}. ${d.sign} Nguyên nhân thường gặp: ${d.cause} Nên đưa đi bác sĩ thú y sớm.`);
 }
 
 /** Tiến một phút trong game. Không đụng tới UI. */
@@ -106,9 +98,7 @@ export function stepMinute(S, ctx) {
 
   // Sức khỏe, độ sung
   if (!S.sick && S.hunger > 40 && S.water.level > 0 && S.water.clean > 40 && S.cage > 40) S.health += 0.025;
-  if (S.sick) {
-    S.health -= DISEASES[S.sick.type].dmg; S.mood -= 0.03; S.vigor -= 0.03;
-  }
+  stepIllness(S, ctx);
   if (S.molt) S.vigor -= 0.008 / st.featherMolt; // chim lâu năm thay lông mệt hơn
   else if (!S.sick && S.health > 70 && S.mood > 55 && S.hunger > 40) S.vigor += 0.01 * st.vigorK * (S.vigor > 80 ? 0.25 : 1); // gần đỉnh lên chậm: không ép thì lửa không tự vọt
   // Quá lửa (ép mồi, giọng mồi dồn dập): chim nhảy loạn lồng, căng thẳng, lông mới dễ xoắn
@@ -121,7 +111,7 @@ export function stepMinute(S, ctx) {
   for (const k of RISK_KEYS) S.risk[k] *= 0.999;
   if (!S.sick) {
     // Chim non, chim già sức đề kháng kém: phát bệnh ở ngưỡng nguy cơ thấp hơn (chim non đặc biệt sợ lạnh)
-    for (const k of RISK_KEYS) if (S.risk[k] * st.riskK * (k === 'cam_lanh' ? st.coldK : 1) >= 100) { getSick(S, ctx, k); break; }
+    for (const k of RISK_KEYS) if (S.risk[k] * st.riskK * (k === 'cam_lanh' ? st.coldK : 1) >= 100) { catchIllness(S, ctx, k); break; }
   }
 
   // Hót: chỉ khi khỏe, sung, vui, dạn người. Giọng càng lên cấp hót càng thường, hiệp càng dài;

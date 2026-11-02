@@ -6,6 +6,7 @@ import { MIX_DAYS, SLEEP_FROM } from '../config.js';
 import { stageOf, isYoung } from '../data/stages.js';
 import { fireBand } from '../data/song.js';
 import { clamp, hourOf, isNight } from './util.js';
+import { catchIllness, prescribe, giveDose, sickPhase } from './illness.js';
 
 /**
  * Mỗi hành động: { blocked(S, sp) -> lý do | null, run(S, ctx, payload) -> số phút tiêu tốn }
@@ -47,7 +48,7 @@ export const ACTIONS = {
       const full = S.hunger > 95;
 
       if (v === -3) {
-        if (!S.sick) { S.sick = { type: 'ngo_doc', since: S.t }; S.sickCount++; } // đang ốm thì giữ bệnh cũ để thú y vẫn chữa đúng, ngộ độc trừ máu ngay
+        if (!S.sick) catchIllness(S, ctx, 'ngo_doc', 'ro'); // đang ốm thì giữ bệnh cũ để thú y vẫn chữa đúng, ngộ độc trừ máu ngay
         S.health -= 25; T.bad.push(F.name);
         ctx.log('bad', `${F.name}: ${note} ${S.name} có dấu hiệu ngộ độc, cần đưa đi thú y ngay!`);
         return 5;
@@ -246,16 +247,16 @@ export const ACTIONS = {
 
   vet: {
     run(S, ctx) {
-      if (S.sick) {
-        const d = DISEASES[S.sick.type];
-        ctx.log('good', `Bác sĩ thú y chẩn đoán: ${d.name}. Đã điều trị. Phòng bệnh: ${d.prevent}`);
-        S.sick = null; S.health += 8; S.mood -= 4;
-        return 120;
-      }
+      if (S.sick) return prescribe(S, ctx);
       ctx.log('info', 'Bác sĩ thú y: chim khỏe, không cần thuốc. Đừng tự cho chim uống kháng sinh khi không có bệnh. Di chuyển nhiều cũng làm chim căng thẳng.');
       S.mood -= 6;
       return 60;
     },
+  },
+
+  medicine: {
+    blocked(S) { return sickPhase(S) === 'tri' && !S.sick.dosedToday ? null : 'Chim không cần uống thuốc lúc này.'; },
+    run(S, ctx) { return giveDose(S, ctx); },
   },
 
   wait: { run() { return 30; } },
@@ -268,6 +269,7 @@ export const ACTIONS = {
 
 export function observe(S, sp) {
   const out = [];
+  const ill = sickPhase(S) === 'ro' ? S.sick : null; // ủ bệnh, đang điều trị: chưa (không còn) triệu chứng rõ
   out.push(S.hunger < 25 ? 'Chim đói, mổ máng liên tục.' : S.hunger < 60 ? 'Chim ăn uống bình thường.' : 'Diều căng, chim no.');
   if (S.feeder.type) {
     const a = sp.staple[S.feeder.type];
@@ -276,18 +278,20 @@ export function observe(S, sp) {
     if (S.feeder.days >= 1) out.push('Thức ăn đã để từ hôm qua, nên thay mới.');
   } else out.push('Máng trống.');
   out.push(S.water.clean < 40 ? 'Nước trong cóng đục, có cặn.' : S.water.level < 20 ? 'Cóng nước gần cạn.' : 'Nước trong.');
-  if (S.sick?.type === 'tieu_chay') out.push('Phân lỏng, nhiều nước.');
-  else if (S.sick) out.push('Phân ít, phần trắng ngả vàng hoặc xanh: dấu hiệu chim ốm, ăn kém.');
+  if (ill?.type === 'tieu_chay') out.push('Phân lỏng, nhiều nước.');
+  else if (ill) out.push('Phân ít, phần trắng ngả vàng hoặc xanh: dấu hiệu chim ốm, ăn kém.');
   else out.push(S.cage < 40 ? 'Khay phân đầy, có mùi.' : 'Phân khô, có phần trắng và phần đen: tiêu hóa tốt.');
   if (S.molt) out.push('Đang thay lông: nhiều ống lông mới, lông cũ rụng dưới khay.');
-  else if (S.sick?.type === 'ran_mat') out.push('Lông xơ, chim rỉa lông liên tục.');
+  else if (ill?.type === 'ran_mat') out.push('Lông xơ, chim rỉa lông liên tục.');
   else out.push(S.feather > 75 ? 'Lông mượt, ôm sát thân.' : S.feather > 50 ? 'Lông hơi xơ.' : 'Lông xơ xác, kém bóng.');
-  out.push(S.sick ? 'Mắt lim dim, chim đứng xù lông, có lúc ngủ cả hai chân.' : 'Mắt tròn, sáng.');
-  if (S.sick && ['cam_lanh', 'khi_doc', 'say_nang'].includes(S.sick.type)) out.push('Đứng yên mà đuôi vẫn nhấp theo từng nhịp thở: chim đang khó thở.');
+  out.push(ill ? 'Mắt lim dim, chim đứng xù lông, có lúc ngủ cả hai chân.' : 'Mắt tròn, sáng.');
+  if (ill && ['cam_lanh', 'khi_doc', 'say_nang'].includes(ill.type)) out.push('Đứng yên mà đuôi vẫn nhấp theo từng nhịp thở: chim đang khó thở.');
   if (!S.sick && sp.skill === 'song') { const F = fireBand(S.vigor, sp); out.push(`Độ lửa: ${F.name.toLowerCase()}. ${F.sign}`); }
   if (S.mix >= 20) out.push('Giọng có lẫn tiếng tạp: chim non đang "lai giọng". Cho nghe giọng mồi chuẩn, giữ chỗ yên tĩnh.');
   if (sp.skill === 'song' && S.stage === 'chuyen') out.push('Chim non đang tập giọng: hay líu ríu nhỏ trong cổ. Giọng mồi nên mở vừa phải, tránh để chim nghe tạp âm, chim hót dở kẻo "lai giọng".');
   out.push(S.trust > 60 ? 'Chim dạn, đến gần khi bạn lại gần lồng.' : S.trust > 30 ? 'Chim đã bớt sợ người.' : 'Chim còn nhát, hay nép vào góc lồng.');
+  if (sickPhase(S) === 'som') out.push(`${DISEASES[S.sick.type].early} Có dấu hiệu sớm của bệnh ${DISEASES[S.sick.type].name.toLowerCase()}. Đưa đi thú y lúc này bệnh nhẹ và mau khỏi hơn.`);
+  if (sickPhase(S) === 'tri') out.push(`Đang uống thuốc trị ${DISEASES[S.sick.type].name.toLowerCase()}, còn ${S.sick.dosesLeft} ngày. Giữ chim ấm, yên tĩnh.`);
   const r = S.risk;
   if (r.tieu_chay > 40) out.push('Cảnh báo: vệ sinh thức ăn, nước uống đang kém, dễ sinh bệnh đường ruột.');
   if (r.cam_lanh > 40) out.push('Cảnh báo: chim hơi run, cần giữ ấm, tránh để ướt.');
@@ -301,7 +305,10 @@ export function observe(S, sp) {
 /** Mô tả ngắn hành vi chim hiện tại, hiển thị dưới khung cảnh. */
 export function describeSigns(S, sp) {
   const h = hourOf(S.t);
-  if (S.sick) return { strong: DISEASES[S.sick.type].name, text: DISEASES[S.sick.type].sign };
+  const ph = sickPhase(S);
+  if (ph === 'som') return { text: DISEASES[S.sick.type].early };
+  if (ph === 'tri') return { strong: 'Đang điều trị', text: `Còn ${S.sick.dosesLeft} ngày thuốc. Giữ ấm, để chim yên.` };
+  if (ph) return { strong: DISEASES[S.sick.type].name, text: DISEASES[S.sick.type].sign };
   if (S.covered && isNight(S.t)) return { text: 'Chim đang ngủ yên trong áo lồng.' };
   if (S.water.level < 5) return { strong: 'Hết nước', text: 'Chim há mỏ, đi quanh cóng tìm nước.' };
   if (S.hunger < 20) return { strong: 'Chim đói', text: 'Mổ máng liên tục, kêu chiêm chiếp.' };

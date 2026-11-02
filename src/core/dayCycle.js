@@ -1,4 +1,3 @@
-import { DISEASES } from '../data/diseases.js';
 import { STAPLES } from '../data/foods.js';
 import { LOCATIONS } from '../data/locations.js';
 import { WEATHER, rollWeather, monthOf, weatherName, sunWindow } from '../data/weather.js';
@@ -9,6 +8,7 @@ import { feederAcceptance } from './simulation.js';
 import { newToday } from './state.js';
 import { clamp } from './util.js';
 import { scheduleDay } from './householdEvents.js';
+import { nightIllness, sickPhase } from './illness.js';
 
 /** Khung nắng tốt bằng chữ, ví dụ "6:00–9:30". */
 export const sunText = (W) => sunWindow(W).map((h) => `${Math.floor(h)}:${h % 1 ? '30' : '00'}`).join('–');
@@ -92,7 +92,7 @@ export function endDay(S, ctx, forced) {
   } else if (T.talks > 0) add(true, 'Trò chuyện, dạy nói', 'Lặp lại đều đặn là cách dạy nói hiệu quả.');
   else { add(false, 'Chưa trò chuyện với chim', 'Loài biết nói cần được trò chuyện mỗi ngày để dạn người, học nói.'); S.mood -= 3; }
 
-  if (S.sick) add(false, 'Chim bệnh chưa được chữa', `${DISEASES[S.sick.type].name}: ${DISEASES[S.sick.type].sign} Đưa đi thú y càng sớm càng tốt.`);
+  nightIllness(S, ctx, add);
 
   if (S.covered) add(true, 'Trùm áo lồng ban đêm', 'Giúp chim ngủ yên, tránh gió lùa, muỗi và mèo.');
   else {
@@ -143,7 +143,7 @@ export function endDay(S, ctx, forced) {
 /** Giọng hót tiến bộ mỗi ngày nhờ chim sung, vui, dạn người, hót nhiều và được nghe giọng mồi. */
 function songGain(S) {
   const T = S.today;
-  if (S.sick) return -3;   // ốm thì sa sút giọng
+  if (S.sick && sickPhase(S) !== 'som') return -3;   // ốm thì sa sút giọng (ủ bệnh chưa ảnh hưởng)
   if (S.molt) return 0;    // thay lông: chim nghỉ hót, giọng đứng yên
   const st = stageOf(S);
   const tutor = S.newDays > 0 ? 0 : Math.min(T.tutor, 2) - Math.min(T.tutorOff || 0, 2) * 0.5; // mở sai giờ chỉ được nửa tác dụng
@@ -168,6 +168,7 @@ export function startDay(S, ctx) {
   const { sp, rng } = ctx;
   S.day++; S.t = DAY_START; S.weather = rollWeather(S.day, rng, S.region, monthOf(S));
   S.today = newToday(); S.pos = S.loc; S.wet = 0;
+  if (S.sick) S.sick.dosedToday = false;
   S.singUntil = 0; S.sayUntil = 0; // mốc phút của hôm qua, không để chim "hót" hay bóng chữ sót sang sáng nay
   scheduleDay(S, rng);
   const [mStart, mEnd] = moltDays(S);

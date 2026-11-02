@@ -5,6 +5,7 @@ import { ACHIEVEMENTS, loadAchievements, readAchievements } from '../src/core/ac
 import { songLevel } from '../src/data/song.js';
 import { WEATHER, WEATHER_TABLE, rollWeather, monthOf } from '../src/data/weather.js';
 import { createRng } from '../src/core/rng.js';
+import { sickPhase } from '../src/core/illness.js';
 
 /** Người chơi mẫu: chăm đúng cách, chọn phương án tốt cho mọi sự kiện. */
 function playGoodDay(g, opts) {
@@ -25,6 +26,7 @@ function playGoodDay(g, opts) {
   g.advance(150); resolve();
   g.act('clean', { method: 'wet' }); resolve();
   if (S.sick) { g.act('vet'); resolve(); }
+  if (!g.blocked('medicine')) { g.act('medicine'); resolve(); }
   while (S.t < 18 * 60 && g.running) { g.advance(18 * 60 - S.t); resolve(); }
   if (g.running) { if (!S.covered) g.act('cover'); resolve(); }
   if (g.running) g.act('sleep');
@@ -581,5 +583,94 @@ describe('Lồng Tre - thời tiết theo vùng, tháng', () => {
     };
     expect(night2(false)).toBe(true);
     expect(night2(true)).toBe(false);
+  });
+});
+
+describe('Lồng Tre - bệnh và liệu trình', () => {
+  const mk = () => { const g = new Game({ seed: 6, storage: null }); g.newGame('chaomao', 'B'); g.S.schedule = {}; g.act('staple', { food: 'cm' }); g.act('water'); return g; };
+  const catchNow = (g, key = 'tieu_chay') => { g.S.risk[key] = 101; adv(g, 1); };
+  const logged = (g, s) => g.S.log.some((e) => e.text.includes(s));
+
+  it('nguy cơ vượt ngưỡng: ủ bệnh trước, 180 phút sau mới phát rõ', () => {
+    const g = mk();
+    catchNow(g);
+    expect(sickPhase(g.S)).toBe('som');
+    expect(g.S.sickCount).toBe(1);
+    expect(logged(g, 'Tiêu chảy')).toBe(false);
+    adv(g, 179);
+    expect(sickPhase(g.S)).toBe('som');
+    adv(g, 1);
+    expect(sickPhase(g.S)).toBe('ro');
+    expect(logged(g, 'Tiêu chảy')).toBe(true);
+  });
+
+  it('ủ bệnh qua đêm vẫn đếm tiếp sáng hôm sau', () => {
+    const g = mk();
+    adv(g, 17 * 60 + 30 - g.S.t);
+    catchNow(g);
+    toNight(g); g.nextDay(); g.S.schedule = {};
+    expect(sickPhase(g.S)).toBe('som');
+    adv(g, 180 - 30 - 1);
+    expect(sickPhase(g.S)).toBe('som');
+    adv(g, 2);
+    expect(sickPhase(g.S)).toBe('ro');
+  });
+
+  it('thú y lúc ủ bệnh: 3 liều; cho uống đủ thì khỏi', () => {
+    const g = mk();
+    catchNow(g);
+    g.act('vet');
+    expect(sickPhase(g.S)).toBe('tri');
+    expect(g.S.sick.dosesLeft).toBe(2);
+    expect(toNight(g).items.some((i) => i.ok && i.label === 'Cho uống thuốc đúng liều')).toBe(true);
+    g.nextDay(); g.act('medicine'); expect(g.S.sick.dosesLeft).toBe(1);
+    toNight(g); g.nextDay(); g.act('medicine');
+    expect(g.S.sick).toBe(null);
+  });
+
+  it('bỏ một liều thì tái bệnh, đi thú y lại liệu trình dài hơn', () => {
+    const g = mk();
+    catchNow(g); adv(g, 180);
+    expect(sickPhase(g.S)).toBe('ro');
+    g.act('vet');
+    expect(g.S.sick.dosesLeft).toBe(4);
+    toNight(g); g.nextDay(); g.S.schedule = {};
+    expect(toNight(g).items.some((i) => i.ok === false && i.label === 'Bỏ liều thuốc')).toBe(true);
+    expect(sickPhase(g.S)).toBe('ro');
+    g.nextDay(); g.act('vet');
+    expect(g.S.sick.dosesLeft).toBe(6);
+  });
+
+  it('đi thú y khi đang điều trị không rút ngắn liệu trình', () => {
+    const g = mk();
+    catchNow(g); g.act('vet'); g.act('vet');
+    expect(sickPhase(g.S)).toBe('tri');
+    expect(g.S.sick.dosesLeft).toBe(2);
+  });
+
+  it('không cho uống thuốc khi không cần hoặc đã uống hôm nay', () => {
+    const g = mk();
+    expect(g.blocked('medicine')).toBeTruthy();
+    catchNow(g); g.act('vet');
+    expect(g.blocked('medicine')).toBeTruthy();
+  });
+
+  it('bản lưu cũ đang ốm mở ra là phát rõ, đi thú y được', () => {
+    const g = mk();
+    const old = JSON.parse(JSON.stringify(g.S));
+    old.sick = { type: 'cam_lanh', since: 400 };
+    g.load(old);
+    expect(sickPhase(g.S)).toBe('ro');
+    g.act('vet');
+    expect(sickPhase(g.S)).toBe('tri');
+  });
+
+  it('chim chết lúc đang điều trị vẫn ra màn chim chết', () => {
+    const g = mk();
+    catchNow(g); g.act('vet');
+    g.S.health = 1; g.S.water.level = 0; g.S.hunger = 0; g.S.feeder.amt = 0;
+    adv(g, 120);
+    expect(g.pending?.type).toBe('over');
+    expect(g.pending.sick.type).toBe('tieu_chay');
   });
 });
