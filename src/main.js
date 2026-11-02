@@ -50,7 +50,7 @@ function showStart() {
   if (!thumbs) thumbs = renderBirdThumbnails();
   modals.start({
     saved: loadGame(), thumbs,
-    onNew: (sp, name, stage) => { game.newGame(sp, name, stage); world.setView('close'); saveGame(game.S); },
+    onNew: (sp, name, stage, opts) => { game.newGame(sp, name, stage, opts); world.setView('close'); saveGame(game.S); },
     onContinue: () => {
       game.load(loadGame());
       world.setView('close');

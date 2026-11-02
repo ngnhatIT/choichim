@@ -252,6 +252,12 @@ kbd {
 .signs b { color: var(--son); font-weight: 700; }
 .signs[data-lv="alert"] { background: var(--son-soft); }
 .signs[data-lv="alert"] .i { color: var(--son); }
+.signs .s-more { display: block; margin-top: 4px; color: var(--ink-2, inherit); opacity: 0.85; }
+.tag.trait { background: var(--tre-soft); color: var(--tre); }
+.wx[data-w="ret"] .i, .wx[data-w="rao"] .i, .wx[data-w="nom"] .i { color: var(--cham); }
+
+/* Chế độ người chơi lâu năm: không thanh chỉ số, không nhắc việc; người chơi tự đọc dấu hiệu của chim */
+body.lau #stats, body.lau #goals, body.lau #nextGoal, body.lau #needs, body.lau #floats, body.lau #coach { display: none !important; }
 
 /* Danh sách chỉ số: nhãn, thanh, số, xu hướng thẳng cột */
 .stats { display: grid; grid-template-columns: 18px max-content minmax(40px, 1fr) 26px 14px; align-items: center; gap: 7px 8px; font-size: 0.82rem; }
@@ -511,9 +517,9 @@ body:has(.overlay.show) .toasts { top: auto; bottom: calc(16px + env(safe-area-i
 .choice .go { width: 18px; height: 18px; color: var(--ink-3); transform: rotate(-90deg); }
 .ages b small { font-weight: 500; color: var(--ink-3); font-size: 0.8rem; margin-left: 4px; }
 .ages .go { transform: none; opacity: 0; }
-.ages button[aria-pressed="true"] { border-color: var(--gold); background: var(--gold-soft); }
-.ages button[aria-pressed="true"] .go { opacity: 1; color: var(--gold-ink); }
-.ages button[aria-pressed="true"] .ci { background: var(--gold); color: var(--on-fill); }
+.ages button[aria-pressed="true"], .regions button[aria-pressed="true"], .modes button[aria-pressed="true"] { border-color: var(--gold); background: var(--gold-soft); }
+.ages button[aria-pressed="true"] .go, .regions button[aria-pressed="true"] .go, .modes button[aria-pressed="true"] .go { opacity: 1; color: var(--gold-ink); }
+.ages button[aria-pressed="true"] .ci, .regions button[aria-pressed="true"] .ci, .modes button[aria-pressed="true"] .ci { background: var(--gold); color: var(--on-fill); }
 .choice .num { min-width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-weight: 700; font-size: 0.82rem; background: var(--sunken); color: var(--ink-2); }
 .warnbox { margin-top: 14px; padding: 14px 16px; border-radius: 14px; background: var(--son-soft); box-shadow: inset 0 0 0 1px rgba(168, 56, 31, 0.2); }
 .warnbox b { display: flex; align-items: center; gap: 8px; color: var(--son); }

@@ -100,9 +100,9 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&am
 
 export const ACTION_ICON = {
   staple: 'bowl', fresh: 'fruit', water: 'drop', clean: 'broom', bath: 'bath', sun: 'sun', cover: 'cover',
-  move: 'move', talk: 'talk', tutor: 'tutor', look: 'eye', vet: 'vet', wait: 'hourglass', sleep: 'sleep',
+  move: 'move', talk: 'talk', tutor: 'tutor', look: 'eye', vet: 'vet', medicine: 'drop', wait: 'hourglass', sleep: 'sleep',
 };
-export const WEATHER_ICON = { mat: 'cloudsun', nong: 'hot', mua: 'rain' };
+export const WEATHER_ICON = { mat: 'cloudsun', nong: 'hot', mua: 'rain', ret: 'wind', nom: 'humid', rao: 'rain' };
 export const LOG_ICON = { good: 'ok', bad: 'alert', warn: 'warn', tip: 'bulb', info: 'info' };
 export const LOG_LABEL = { good: 'Tốt', bad: 'Nguy hiểm', warn: 'Lưu ý', tip: 'Mẹo', info: 'Ghi chú' };
 export const EVENT_ICON = {
