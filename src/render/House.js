@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   bananaLeaf, brickPaving, encausticTile, grass, leafy, palmFrond, plaster, roofTiles, terracottaFloor, waterNormal, wood, woodPanel,
 } from './textures.js';
@@ -163,6 +164,12 @@ export class House {
     this.garden();
     this.livingRoom();
     this.kitchen();
+
+    // Vật liệu đổi theo trời (ướt, đèn đêm) giữ nguyên đối tượng; cá bơi thì không gộp
+    const live = new Set([...this.wetMats, ...this.emissive.map((e) => e.mat)]);
+    const sways = new Set(this.sway.map((s) => s.g));
+    mergeStatic(G, live, new Set([...sways, ...this.fish.map((p) => p.f)]));
+    for (const g of sways) mergeStatic(g, live);
   }
 
   plane(w, d, map, x, y, z, extra = {}) {
@@ -734,3 +741,43 @@ export class Stand {
 }
 
 function rand(a, b) { return a + Math.random() * (b - a); }
+
+// Vật liệu giống hệt nhau (std() tạo mới mỗi lần gọi) coi là một; vật liệu đổi lúc chạy thì so theo chính nó
+const matKey = (m, live) => (live.has(m) ? m.uuid : [
+  m.type, m.color?.getHex(), m.roughness, m.metalness, m.map?.uuid, m.bumpMap?.uuid, m.bumpScale,
+  m.emissive?.getHex(), m.emissiveIntensity, m.side, m.alphaTest, m.alphaToCoverage, m.flatShading,
+].join());
+
+/**
+ * Gộp mesh tĩnh dưới `root` (không đi vào nhánh `skip`) thành một mesh mỗi loại vật liệu + cờ bóng đổ.
+ * Nhà vườn có ~850 mesh: vẽ từng cái tốn hàng trăm draw call cho mỗi lượt (cảnh, bóng, AO, cubemap) — nghẽn CPU.
+ */
+function mergeStatic(root, live, skip = new Set()) {
+  root.updateMatrixWorld(true);
+  const inv = root.matrixWorld.clone().invert(), m4 = new THREE.Matrix4(), buckets = new Map(), mats = new Map();
+  const walk = (o) => {
+    for (const c of o.children) {
+      if (skip.has(c)) continue;
+      if (c.isMesh && !c.isInstancedMesh && !c.material.transparent && !c.children.length) {
+        const k = matKey(c.material, live) + c.castShadow + c.receiveShadow;
+        if (!buckets.has(k)) { buckets.set(k, []); mats.set(k, c.material); }
+        buckets.get(k).push(c);
+      } else walk(c);
+    }
+  };
+  walk(root);
+  for (const [k, list] of buckets) {
+    if (list.length < 2) continue;
+    const geos = list.map((m) => {
+      const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+      for (const a of Object.keys(g.attributes)) if (a !== 'position' && a !== 'normal' && a !== 'uv') g.deleteAttribute(a);
+      return g.applyMatrix4(m4.multiplyMatrices(inv, m.matrixWorld));
+    });
+    const geo = mergeGeometries(geos);
+    if (!geo) continue;
+    const merged = new THREE.Mesh(geo, mats.get(k));
+    merged.castShadow = list[0].castShadow; merged.receiveShadow = list[0].receiveShadow;
+    for (const m of list) m.removeFromParent();
+    root.add(merged);
+  }
+}

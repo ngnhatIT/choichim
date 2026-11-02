@@ -63,9 +63,14 @@ export class World {
 
     // Khử răng cưa bằng MSAA trên render target HDR của composer, nên canvas không cần antialias
     const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-    // Máy yếu (ít nhân CPU hoặc ít RAM): độ phân giải thấp hơn, bóng thường thay bóng mềm, không AO
-    const weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
-    this.maxPr = Math.min(window.devicePixelRatio, weak ? 1.25 : 1.75);
+    // Máy yếu (card đồ họa tích hợp, ít nhân CPU hoặc ít RAM): độ phân giải thấp hơn, bóng thường thay bóng mềm, không AO.
+    // Máy văn phòng nhiều nhân CPU vẫn hay đi với card Intel tích hợp, nên phải xét cả tên GPU
+    const gl = renderer.getContext(), dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const gpu = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
+    const weak = (/intel|mali|adreno|powervr|swiftshader|llvmpipe|basic render/i.test(gpu) && !/\barc\b/i.test(gpu))
+      || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
+    this.weak = weak;
+    this.maxPr = Math.min(window.devicePixelRatio, weak ? 1 : 1.75);
     renderer.setPixelRatio(this.maxPr);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = weak ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
@@ -173,7 +178,7 @@ export class World {
    * Hậu kỳ trên render target HDR (half float, MSAA 4x): cảnh → GTAO (che khuất môi trường) → bloom → chỉnh màu → tone mapping + sRGB.
    */
   initPost(weak) {
-    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: weak ? 2 : 4 });
     const composer = new EffectComposer(this.renderer, rt);
     composer.addPass(new RenderPass(this.scene, this.camera));
     if (!weak) {
@@ -200,7 +205,7 @@ export class World {
     this.composer = composer;
   }
 
-  /** Khung hình tụt dưới ~40/giây liên tục 3 giây: tắt AO trước, rồi hạ độ phân giải từng bậc (không thấp hơn 1). */
+  /** Khung hình tụt dưới ~40/giây liên tục 3 giây: tắt AO trước, rồi hạ độ phân giải từng bậc (không thấp hơn 0.75). */
   adapt(raw) {
     if (document.hidden || raw > 0.5) return; // tab ẩn hoặc vừa quay lại: bỏ qua
     this.ft = (this.ft ?? 1 / 60) * 0.95 + raw * 0.05;
@@ -209,8 +214,8 @@ export class World {
     const pr = this.renderer.getPixelRatio();
     // AO đã tắt vì chậm thì giữ tắt, tránh bật tắt qua lại
     if (this.slowFor > 3 && this.ao?.enabled && !this.lowFps) { this.ao.enabled = false; this.aoOff = true; this.slowFor = 0; return; }
-    if (this.slowFor > 3 && pr > 1) {
-      this.renderer.setPixelRatio(Math.max(1, pr - 0.25));
+    if (this.slowFor > 3 && pr > 0.75) {
+      this.renderer.setPixelRatio(Math.max(0.75, pr - 0.25));
       this.resize(); this.slowFor = 0;
     }
     // Mượt trở lại lâu (sau hộp thoại nặng, tab khác...) thì nâng dần độ phân giải về mức cũ
@@ -303,11 +308,11 @@ export class World {
     if (this.lowFps && (this.skipFrame = !this.skipFrame)) return; // chế độ nghe chim: vẽ cách một khung
     const raw = this.clock.getDelta(), dt = Math.min(0.05, raw);
     this.adapt(raw);
-    // Bóng đổ vẽ một lần mỗi khung theo yêu cầu (lượt AO cũng gọi render, không được vẽ lại bóng);
-    // nghe chim: chỉ 1/3 số khung (chim đứng hót ít di chuyển)
+    // Bóng đổ vẽ theo yêu cầu (lượt AO cũng gọi render, không được vẽ lại bóng): cách một khung là đủ mượt
+    // cho chim nhảy, cây lay; nghe chim: 1/3 số khung (chim đứng hót ít di chuyển)
     const sm = this.renderer.shadowMap;
     sm.autoUpdate = false;
-    if (!this.lowFps || (this.shadowTick = ((this.shadowTick || 0) + 1) % 3) === 0) sm.needsUpdate = true;
+    if ((this.shadowTick = ((this.shadowTick || 0) + 1) % (this.lowFps ? 3 : 2)) === 0) sm.needsUpdate = true;
     if (this.ao) this.ao.enabled = !this.lowFps && !this.aoOff;
     this.now += dt;
     const S = this.S;
