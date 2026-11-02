@@ -38,7 +38,8 @@ function ring(score, label = 'điểm') {
 }
 
 function lvBadge(P) {
-  return `<span class="lv lv${P.lv}"><span class="pips" aria-hidden="true"><i></i><i></i><i></i></span>${P.lvText}</span>`;
+  const legal = P.legal.group ? `<span class="lv lv3 legal-tag" title="${esc(P.legal.note)}">Loài nguy cấp, quý, hiếm nhóm ${P.legal.group}</span>` : '';
+  return `<span class="lv lv${P.lv}"><span class="pips" aria-hidden="true"><i></i><i></i><i></i></span>${P.lvText}</span>${legal}`;
 }
 
 export class Modals {
@@ -184,7 +185,7 @@ export class Modals {
       const P = SPECIES[pick];
       if (!P.wild) { $('#step2').innerHTML = ''; return ageStep($('#step2')); }
       $('#step2').innerHTML = `<div class="slip"><h3>${icon('pin')}Bạn nhận ${P.short} từ đâu?</h3><div class="choice">
-        <button data-do="farm"><span class="ci">${icon('home')}</span><span><b>Trại nuôi sinh sản, có nguồn gốc rõ ràng</b><span class="d">Chim quen người từ nhỏ, đã ăn cám, ít sốc môi trường, có giấy tờ chứng minh.</span></span>${icon('chevron', 'go')}</button>
+        <button data-do="farm"><span class="ci">${icon('home')}</span><span><b>Trại nuôi sinh sản, có nguồn gốc rõ ràng</b><span class="d">Chim quen người từ nhỏ, đã ăn cám, ít sốc môi trường, có giấy tờ chứng minh.${P.legal.group ? ` <b>${esc(P.legal.note)}</b>` : ''}</span></span>${icon('chevron', 'go')}</button>
         <button data-do="wild"><span class="ci">${icon('alert')}</span><span><b>Chợ chim trời, chim bẫy ngoài tự nhiên</b><span class="d">Giá rẻ, bán nhiều ở chợ và trên mạng.</span></span>${icon('chevron', 'go')}</button></div><div id="step3"></div></div>`;
     };
     // Tuổi chim: đổi nhu cầu, sức đề kháng, cách học giọng và bộ lông (data/stages.js)
@@ -445,7 +446,7 @@ export class Modals {
         <div class="voice-box"><span class="medallion" aria-hidden="true">${icon('note')}</span><div><h3>Tiếng hót</h3><p>${esc(P.voice || '')}</p>${this.listenBtn(k)}${extra}</div></div>
         <div class="facts">${fact('bowl', 'Thức ăn chính', STAPLES[P.best].name)}${fact('fruit', 'Món bổ sung tốt', goods.join(', '))}
         ${fact('sun', 'Nắng sớm mỗi ngày', `${P.sun[0]}–${P.sun[1]} phút`)}${fact('bath', 'Tắm nước', P.bathGap === 1 ? 'Mỗi ngày' : 'Ít nhất mỗi ' + P.bathGap + ' ngày')}
-        ${fact('chart', 'Độ khó', P.lvText)}${fact('pin', 'Nguồn gốc', P.wild ? 'Thường bị bẫy từ tự nhiên, chỉ nhận chim nuôi sinh sản' : 'Nuôi sinh sản phổ biến')}</div>
+        ${fact('chart', 'Độ khó', P.lvText)}${fact('pin', 'Nguồn gốc', P.legal.group ? `Loài nhóm ${P.legal.group}${P.legal.cites ? `, CITES ${P.legal.cites}` : ''}: chỉ nhận chim sinh sản tại cơ sở có mã số` : P.wild ? 'Thường bị bẫy từ tự nhiên, chỉ nhận chim nuôi sinh sản' : 'Nuôi sinh sản phổ biến')}</div>
         <h3>${icon('bulb')}Kinh nghiệm chăm</h3><ul class="hb-list">${P.tips.map((t) => `<li>${t}</li>`).join('')}</ul>`;
     } else {
       const h = HANDBOOK.find((x) => x.id === tab.slice(2));

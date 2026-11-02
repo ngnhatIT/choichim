@@ -41,6 +41,7 @@ export function endDay(S, ctx, forced) {
     if (T.fresh > 0) add(true, 'Có trái cây, rau tươi', 'Bổ sung vitamin, giúp chim khỏe và lên màu.');
     else { add(false, 'Thiếu trái cây, rau tươi', `${sp.name} cần đồ tươi hằng ngày.`); S.vigor -= 6; S.feather -= 2; }
   }
+  if (S.mode === 'moi' && S.molt && T.chuoi > 2) add(null, 'Chuối nên cho vừa phải', 'Chuối nhiều đường và ít chất, cho quá nhiều lần sẽ làm chim no mà thiếu đạm. Giới nuôi còn tranh cãi chuối lúc thay lông nên chỉ cho vừa phải.');
   if (isYoung(S)) {
     if (T.protein >= 2) add(true, 'Chim non được ăn mồi mềm nhiều bữa', 'Đạm dễ tiêu giúp chim chuyền lớn nhanh, thay lông đầu đẹp.');
     else { add(false, 'Chim non thiếu mồi mềm', 'Chim chuyền đang lớn cần ít nhất 2 bữa mồi mềm mỗi ngày (trứng, mồi nhỏ hợp loài).'); S.vigor -= 6; S.feather -= 3; }
@@ -126,6 +127,8 @@ export function endDay(S, ctx, forced) {
     if (T.sunGood >= sp.sun[0] || W.rain) c++;
     if (T.protein > 0 || T.fresh > 0) c++;
     if (T.moltBad) c -= 1.5;
+    S.moltDays++;
+    if (T.pigment) { c += 0.5; S.pigmentDays++; }
     S.feather += (c - 1.6) * 4; S.vigor -= 3;
   }
   if (!S.sick && S.hunger > 30 && S.cage > 40) S.health += 4;
@@ -174,11 +177,13 @@ export function startDay(S, ctx) {
   const [mStart, mEnd] = moltDays(S);
   if (S.day === mStart && !S.molt) {
     S.molt = true;
-    ctx.log('warn', `${S.name} bắt đầu thay lông (ngoài đời kéo dài 1–2 tháng, thường vào mùa thu). Giai đoạn này chim yếu, hót ít. Tắm nắng sáng, tắm nước đều, dinh dưỡng đủ.${sp.moltAvoid.length ? ' Riêng chào mào nên tránh sâu và chuối.' : ''}`);
+    ctx.log('warn', `${S.name} bắt đầu thay lông (ngoài đời kéo dài 1–2 tháng, thường vào mùa thu). Giai đoạn này chim yếu, hót ít. Tắm nắng sáng, tắm nước đều, dinh dưỡng đủ.${sp.moltAvoid.length ? ' Riêng chào mào nên tránh sâu quy; cà rốt, thanh long đỏ, ớt chín giúp lông lên màu.' : ''}`);
   }
   if (S.day === mEnd && S.molt) {
     S.molt = false;
     ctx.log(S.feather >= 75 ? 'good' : 'warn', S.feather >= 75 ? 'Thay lông xong! Bộ lông mới óng mượt nhờ chăm đúng cách.' : 'Thay lông xong nhưng lông mới chưa đẹp. Lần sau chú ý tắm, nắng sớm và dinh dưỡng đầy đủ.');
+    S.redVent = S.moltDays > 0 && S.pigmentDays * 2 >= S.moltDays && sp.moltAvoid.length > 0;
+    if (S.redVent) ctx.log('good', `Nhờ món tạo màu (cà rốt, thanh long đỏ, ớt chín…), lông dưới đuôi của ${S.name} lên màu đỏ đẹp.`);
     if (S.stage === 'chuyen') ctx.log('good', `${S.name} đã khoác bộ lông trưởng thành sau lần thay lông đầu đời. Từ nay trông như chim lớn, dù giọng vẫn còn đang tập.`);
   }
   const W = WEATHER[S.weather];

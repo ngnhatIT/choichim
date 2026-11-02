@@ -8,7 +8,7 @@ export function newToday() {
     staple: 0, stapleW: 0, refill: false, fresh: 0, protein: 0, sauquy: 0, mineral: false,
     water: false, clean: false, dryClean: false,
     sunGood: 0, sunAll: 0, heat: 0, baths: 0, lateBath: false,
-    bad: [], talks: 0, moltBad: false, moves: 0, events: {},
+    bad: [], talks: 0, moltBad: false, pigment: false, chuoi: 0, moves: 0, events: {},
     tutor: 0,      // số lần nghe giọng mồi
     tutorOff: 0,   // số lần mở giọng mồi ngoài giờ chim hăng hót
     sang: 0,       // số hiệp hót
@@ -33,7 +33,9 @@ export function createState({ sp, name, stage = 'truong', mode = 'moi', region =
     risk: Object.fromEntries(RISK_KEYS.map((k) => [k, 0])),
     newDays: NEW_BIRD_DAYS, lastBath: 0, lastMineral: 0, lastProtein: 0,
     words: [], talkProg: 0, sangEver: false, singUntil: 0, sayUntil: 0, say: '',
-    bathFx: 0, molt: false, ownerRisk: 0, dryWarned: false,
+    bathFx: 0, molt: false, moltDays: 0, pigmentDays: 0, // số ngày thay lông, và số ngày trong đó có ăn món tạo màu
+    redVent: false,         // thay lông xong nhờ món tạo màu: lông dưới đuôi đỏ đậm hơn (cảnh 3D)
+    ownerRisk: 0, dryWarned: false,
     mix: 0,                 // "lai giọng" 0–100: chim chuyền nghe tạp âm, chim hót dở mà học sai
     coachOff: false,        // người chơi đã tắt hướng dẫn ngày đầu
     contest: null,          // kết quả hội thi { place: 0..3 (0 = không đạt giải), day }

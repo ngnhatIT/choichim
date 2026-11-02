@@ -15,6 +15,7 @@ import { COMMON_FOOD } from './foods.js';
 export const SPECIES = {
   yenphung: {
     name: 'Vẹt yến phụng', short: 'yến phụng', latin: 'Melopsittacus undulatus',
+    legal: { group: null, cites: null, checkedAt: '2026-11', note: 'Loài nuôi sinh sản phổ biến.' },
     lv: 1, lvText: 'Dễ, hợp người mới', wild: false,
     blurb: 'Vẹt nhỏ gốc Úc, hiền, thích bầu bạn. Được nuôi sinh sản rộng rãi, không lấy từ tự nhiên.',
     voice: 'Líu lo ríu rít nhỏ nhẹ gần như cả ngày, xen tiếng rè rè và tiếng "chiếp" rung rung. Có con bắt chước được vài từ.',
@@ -24,6 +25,8 @@ export const SPECIES = {
       chuoi: [1, 'Ăn được, nhưng trái cây nhiều đường nên chỉ cho ít.'],
       ot: [1, 'Ớt chín ăn được. Riêng cà chua có tính axit, chỉ cho rất ít, không cho lá và cuống.'],
       tao: [2, 'Táo bỏ hạt là món vẹt thích. Hạt táo có chất độc, phải bỏ.'],
+      carot: [1, 'Cà rốt hấp mềm, cắt nhỏ, giàu vitamin A. Cho vừa phải.'],
+      thanhlong: [1, 'Ăn được, nhiều đường nên chỉ cho ít.'],
       rau: [2, 'Rau xanh rửa sạch là nguồn vitamin rất tốt; nên chiếm phần lớn đồ tươi của vẹt.'],
       caocao: [0, 'Yến phụng ăn hạt và rau, gần như không ăn côn trùng.'],
       de: [0, 'Yến phụng gần như không ăn côn trùng.'],
@@ -54,6 +57,7 @@ export const SPECIES = {
 
   chaomao: {
     name: 'Chào mào', short: 'chào mào', latin: 'Pycnonotus jocosus',
+    legal: { group: null, cites: null, checkedAt: '2026-11', note: 'Chưa đối chiếu đầy đủ danh mục hiện hành. Chỉ nhận chim có nguồn gốc rõ ràng.' },
     lv: 2, lvText: 'Trung bình', wild: true,
     blurb: 'Loài chim cảnh phổ biến nhất Việt Nam: mào đen nhọn, má đỏ, giọng hót trong.',
     voice: 'Hót từng cụm ngắn 3–6 tiếng, trong và vui, luyến lên xuống liên tục. Chim sung hót "đổ" dài, giọng sáng.',
@@ -63,6 +67,8 @@ export const SPECIES = {
       chuoi: [2, 'Chuối chín là món khoái khẩu của chào mào.'],
       ot: [2, 'Ớt chín, cà chua bổ sung vitamin, giúp chim lên màu.'],
       tao: [1, 'Ăn được, nên cắt nhỏ.'],
+      carot: [1, 'Cà rốt hấp cắt nhỏ giàu caroten, giúp lông dưới đuôi lên màu đỏ.'],
+      thanhlong: [1, 'Thanh long ruột đỏ ăn được, cho ít một lúc.'],
       rau: [0, 'Chào mào ít ăn rau lá.'],
       caocao: [2, 'Cào cào là mồi tươi rất tốt, giúp chim sung.'],
       de: [1, 'Ăn được, cho lượng vừa phải.'],
@@ -73,13 +79,13 @@ export const SPECIES = {
     },
     needs: { fresh: true, protein: true, mineral: false },
     sun: [15, 40], bathGap: 2, maxBath: 1, shy: false, foodSensitive: false, territorial: false,
-    moltAvoid: ['sauquy', 'chuoi'],
+    moltAvoid: ['sauquy'], // chuối còn tranh cãi trong giới nuôi, chỉ sâu quy có đồng thuận nên cấm
     tips: [
       'Thức ăn chính là cám chuyên dụng cho chào mào, thay mới hằng ngày.',
       'Bổ sung trái cây (chuối, ớt chín, cà chua) và mồi tươi như cào cào.',
       'Sâu quy chỉ cho ít: ăn nhiều dễ làm lông khô, xoắn.',
       'Phơi nắng sáng khoảng 15–30 phút, tránh nắng trưa.',
-      'Mùa thay lông: tắm nắng, tắm nước đều; tránh sâu, chuối, cám kích lửa; không mang đi thi; không đổi lồng.',
+      'Mùa thay lông: tắm nắng, tắm nước đều; tránh sâu quy, cám kích lửa; cho thêm cà rốt hấp, thanh long đỏ, ớt chín để lông lên màu; không mang đi thi; không đổi lồng.',
       'Phần lớn chào mào ngoài chợ bị bẫy từ tự nhiên. Chỉ nhận chim nuôi sinh sản có nguồn gốc rõ ràng.',
     ],
     model: {
@@ -93,6 +99,7 @@ export const SPECIES = {
 
   sao: {
     name: 'Sáo mỏ ngà', short: 'sáo', latin: 'Acridotheres grandis',
+    legal: { group: null, cites: null, checkedAt: '2026-11', note: 'Chưa đối chiếu đầy đủ danh mục hiện hành. Chỉ nhận chim có nguồn gốc rõ ràng.' },
     lv: 1, lvText: 'Dễ', wild: true,
     blurb: 'Thông minh, ăn tạp, có thể bắt chước tiếng người. Hơi dữ, cần kiên nhẫn để thuần.',
     voice: 'Kêu lách chách, ríu rít lẫn tiếng rè, tiếng huýt và tiếng lục cục trong cổ. Bắt chước được tiếng người.',
@@ -102,6 +109,8 @@ export const SPECIES = {
       chuoi: [2, 'Sáo rất thích chuối chín.'],
       ot: [1, 'Ăn được.'],
       tao: [1, 'Ăn được, cắt nhỏ.'],
+      carot: [1, 'Ăn được, nên hấp mềm.'],
+      thanhlong: [1, 'Ăn được.'],
       rau: [0, 'Sáo ít ăn rau.'],
       caocao: [2, 'Cào cào giàu đạm, sáo rất thích.'],
       de: [2, 'Dế là mồi tốt cho sáo.'],
@@ -131,6 +140,7 @@ export const SPECIES = {
 
   chichchoe: {
     name: 'Chích chòe than', short: 'chích chòe', latin: 'Copsychus saularis',
+    legal: { group: null, cites: null, checkedAt: '2026-11', note: 'Chích chòe than không thuộc nhóm IIB, nhưng chích chòe lửa (Copsychus malabaricus) thì có. Đừng nhầm hai loài.' },
     lv: 2, lvText: 'Trung bình', wild: true,
     blurb: 'Đuôi dài vểnh, lông đen trắng. Hót hay, tính lãnh thổ mạnh, cần mồi côn trùng.',
     voice: 'Giọng to, nhiều kiểu: tiếng huýt dài lên xuống rất ngọt xen tiếng láy nhanh; hót nhiều nhất lúc sáng sớm.',
@@ -140,6 +150,8 @@ export const SPECIES = {
       chuoi: [0, 'Chích chòe ăn côn trùng là chính, ít ăn trái cây.'],
       ot: [0, 'Không phải thức ăn của chích chòe.'],
       tao: [0, 'Chích chòe ít ăn trái cây.'],
+      carot: [0, 'Chích chòe ăn côn trùng là chính, ít ăn rau củ.'],
+      thanhlong: [0, 'Chích chòe ít ăn trái cây.'],
       rau: [0, 'Chích chòe không ăn rau.'],
       caocao: [2, 'Cào cào là mồi tươi rất tốt cho chích chòe.'],
       de: [2, 'Dế là mồi chính, giúp chim sung.'],
@@ -169,6 +181,7 @@ export const SPECIES = {
 
   khuyen: {
     name: 'Vành khuyên', short: 'vành khuyên', latin: 'Zosterops sp.',
+    legal: { group: null, cites: null, checkedAt: '2026-11', note: 'Chưa đối chiếu đầy đủ danh mục hiện hành. Chỉ nhận chim có nguồn gốc rõ ràng.' },
     lv: 3, lvText: 'Khó', wild: true,
     blurb: 'Chim nhỏ lông vàng lục, vòng mắt trắng, giọng líu lo. Nhỏ nên rất nhạy cảm.',
     voice: 'Giọng cao, mảnh, líu lo rất nhanh thành chuỗi dài liền mạch; tiếng gọi "chíu" mảnh và trong.',
@@ -178,6 +191,8 @@ export const SPECIES = {
       chuoi: [2, 'Chuối chín nghiền là món khuyên rất thích.'],
       ot: [1, 'Ăn được, cắt thật nhỏ.'],
       tao: [2, 'Đu đủ, táo mềm rất hợp với khuyên.'],
+      carot: [1, 'Cà rốt hấp nghiền mềm, cho lượng nhỏ.'],
+      thanhlong: [2, 'Thanh long chín mềm, ngọt, khuyên rất thích.'],
       rau: [0, 'Khuyên ít ăn rau lá.'],
       caocao: [-1, 'Cào cào quá to so với mỏ khuyên.'],
       de: [-1, 'Dế quá to so với khuyên.'],
@@ -205,6 +220,7 @@ export const SPECIES = {
 
   hoami: {
     name: 'Họa mi', short: 'họa mi', latin: 'Garrulax canorus',
+    legal: { group: 'IIB', cites: 'II', checkedAt: '2026-11', note: 'Loài nguy cấp, quý, hiếm nhóm IIB và Phụ lục II CITES. Chỉ nuôi chim sinh sản tại cơ sở có mã số, có giấy tờ nguồn gốc và đã làm thủ tục với Kiểm lâm.' },
     lv: 3, lvText: 'Khó', wild: true,
     blurb: 'Lông nâu, viền mắt trắng kéo dài như vẽ mi. Giọng hót vang, tính nhát.',
     voice: 'Giọng vang, ấm, rất nhiều kiểu; mỗi câu thường lặp lại 2–4 lần rồi mới đổi sang câu khác.',
@@ -214,6 +230,8 @@ export const SPECIES = {
       chuoi: [1, 'Ăn được, lượng vừa phải.'],
       ot: [0, 'Họa mi ít hứng thú.'],
       tao: [1, 'Ăn được, cắt nhỏ.'],
+      carot: [0, 'Họa mi ít hứng thú với rau củ.'],
+      thanhlong: [1, 'Ăn được, lượng vừa phải.'],
       rau: [0, 'Họa mi không ăn rau.'],
       caocao: [2, 'Cào cào là mồi tốt cho họa mi.'],
       de: [2, 'Dế giúp họa mi sung, hót nhiều.'],
@@ -230,6 +248,7 @@ export const SPECIES = {
       'Không đổi thức ăn đột ngột: chim dễ bỏ ăn, suy nhược.',
       'Rất kỵ đồ mặn; thức ăn phải sạch, không nấm mốc, nước thay mỗi ngày.',
       'Chim mới về dễ “ngã nước”: xù lông, ủ rũ. Trùm áo lồng, để yên tĩnh vài ngày.',
+      'Họa mi là loài nhóm IIB: chỉ nhận chim sinh sản tại cơ sở có mã số, giữ giấy tờ nguồn gốc cẩn thận.',
       'Sau mùa hót là mùa thay lông, chim yếu nhất: không mang đi chọi, đi thi.',
     ],
     model: {

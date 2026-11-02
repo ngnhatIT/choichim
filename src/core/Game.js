@@ -74,6 +74,7 @@ export class Game {
     scheduleDay(this.S, this.rng);
     this.log('info', `${name} vừa về nhà. Lồng đang trùm áo để chim bớt sợ. Việc đầu tiên: cho thức ăn chính vào máng và thay nước sạch.`);
     this.log('tip', 'Chim mới về cần yên tĩnh khoảng 3 ngày: giữ áo lồng, hạn chế trò chuyện, chưa nên tắm ngay ngày đầu.');
+    if (P.legal.group) this.log('warn', `${name} là ${P.short}, loài nhóm ${P.legal.group}${P.legal.cites ? ` và Phụ lục ${P.legal.cites} CITES` : ''}. Hãy lưu giấy tờ nguồn gốc của cơ sở nuôi sinh sản và làm thủ tục với Kiểm lâm.`);
     if (this.realtime) this.anchorClock();
     this.bus.emit('change');
   }

@@ -288,10 +288,11 @@ export class World {
     this.S = S;
     if (!S) return;
     const sp = SPECIES[S.sp];
-    const age = adultness(S.stage, S.day), look = S.sp + (S.stage || '') + Math.round(age * 4);
+    const age = adultness(S.stage, S.day), look = S.sp + (S.stage || '') + Math.round(age * 4) + (S.redVent ? 'r' : '');
     if (this.speciesKey !== look) { // đổi loài, hoặc chim chuyền đang thay dần sang lông trưởng thành
       this.speciesKey = look;
-      this.bird.build(stageModel(sp.model, age, S.stage === 'gia'), S.sp);
+      const m = stageModel(sp.model, age, S.stage === 'gia');
+      this.bird.build(S.redVent && m.colors.vent ? { ...m, colors: { ...m.colors, vent: '#E8201A' } } : m, S.sp); // món tạo màu: lông dưới đuôi đỏ đậm
       this.bird.setCage({ perches: this.cage.perches, targets: this.cage.targets, R: CAGE.R });
       this.vs.lastSing = S.singUntil; this.vs.say = S.say; this.vs.boutUntil = 0;
     }
